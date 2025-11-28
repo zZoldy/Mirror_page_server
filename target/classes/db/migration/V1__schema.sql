@@ -1,0 +1,34 @@
+CREATE TABLE IF NOT EXISTS roles (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(64) NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  username VARCHAR(64) NOT NULL UNIQUE,
+  password VARCHAR(100) NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+CREATE TABLE IF NOT EXISTS user_roles (
+  user_id BIGINT NOT NULL,
+  role_id BIGINT NOT NULL,
+  PRIMARY KEY (user_id, role_id),
+  CONSTRAINT fk_ur_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ur_role FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS user_preferences (
+  user_id BIGINT NOT NULL,
+  pref_key VARCHAR(100) NOT NULL,
+  pref_value VARCHAR(255) NOT NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, pref_key),
+  CONSTRAINT fk_user_prefs_user FOREIGN KEY (user_id) REFERENCES users(id)
+);
+-- Exemplo: (42, 'theme', 'dark')
+
+-- seeds (idempotentes no MySQL)
+INSERT IGNORE INTO roles (name) VALUES ('ROLE_SUPORTE');
+INSERT IGNORE INTO roles (name) VALUES ('ROLE_REDACAO');
+INSERT IGNORE INTO roles (name) VALUES ('ROLE_OPERACAO');

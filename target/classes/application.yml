@@ -1,0 +1,43 @@
+server:
+  port: 8080
+  tomcat:
+    accesslog:
+      enabled: true
+      directory: logs
+      prefix: access_log
+      suffix: .log
+      rotate: false
+      pattern: '%h %l %u %t "%r" %s %b %D'
+    
+mirrorpage:
+  root: C:/mirrorpage/Produtos
+    
+  jwt:
+    secret: "0123456789ZOLDYCKILLYUA9876543210"  # use algo forte!
+    access-minutes: 60
+    refresh-days: 7
+
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/mirrorpage?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8&serverTimezone=America/Sao_Paulo
+    username: mirror
+    password: mirror
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.format_sql: true
+      hibernate.show_sql: false
+      hibernate.dialect: org.hibernate.dialect.MySQLDialect
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true 
+    clean-disabled: false
+
+# (opcional) log mais verboso ao iniciar
+logging:
+  level:
+    org.springframework.security: INFO
+    org.flywaydb.core: INFO
