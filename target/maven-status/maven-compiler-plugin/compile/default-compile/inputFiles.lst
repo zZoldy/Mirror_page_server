@@ -2,6 +2,7 @@ C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\j
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\api\dto\CellChangeEvent.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\api\dto\ChangeBatchDto.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\api\dto\ChangeDto.java
+C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\api\dto\DeleteRowRequest.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\api\dto\MoveRowRequest.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\api\dto\RowInsertRequest.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\api\dto\TreeNodeDto.java
@@ -35,6 +36,7 @@ C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\j
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\server\tabel\CellLockResponse.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\server\tabel\CellLockService.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\server\tabel\CellSaveRequest.java
+C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\server\tabel\RowDeletedEvent.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\server\tabel\RowMoveEvent.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\server\tabel\SheetCellChangeEvent.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\server\tabel\SheetRowInsertedEvent.java

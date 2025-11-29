@@ -1,11 +1,9 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package com.app.mirrorpage.server.tabel;
 
 import com.app.mirrorpage.fs.PathResolver;
 import com.app.mirrorpage.server.service.SheetEventBroadcaster;
+import org.springframework.stereotype.Service;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -13,19 +11,25 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
-import org.springframework.stereotype.Service;
 
 @Service
 public class SheetService {
 
     private final PathResolver pathResolver;
     private final SheetEventBroadcaster broadcaster;
+    private final CellLockService lockService; // Injeção do serviço de locks
 
-    public SheetService(PathResolver pathResolver, SheetEventBroadcaster broadcaster) {
+    public SheetService(PathResolver pathResolver,
+                        SheetEventBroadcaster broadcaster,
+                        CellLockService lockService) {
         this.pathResolver = pathResolver;
         this.broadcaster = broadcaster;
+        this.lockService = lockService;
     }
 
+    /**
+     * Carrega o conteúdo do CSV como String única.
+     */
     public String loadSheet(String relPath) throws IOException {
         Path file = resolveSheet(relPath);
         if (!Files.exists(file)) {
@@ -34,6 +38,9 @@ public class SheetService {
         return Files.readString(file, StandardCharsets.UTF_8);
     }
 
+    /**
+     * Insere uma nova linha, empurra locks para baixo e renumera.
+     */
     public void insertRow(String relPath, int afterRow, String username) throws IOException {
         Path file = resolveSheet(relPath);
 
@@ -41,219 +48,184 @@ public class SheetService {
                 ? Files.readAllLines(file, StandardCharsets.UTF_8)
                 : new ArrayList<>();
 
-        if (linhas.isEmpty()) {
-            // sem cabeçalho, nada a fazer
-            return;
+        // Validação mínima de estrutura
+        if (linhas.size() < 2) return;
+
+        int fixedDataIndex = 1; // Linha Fixa (Índice 1)
+
+        // Calcula onde inserir (afterRow vem do cliente, +2 para pular Header e cair depois da selecionada)
+        int novaLinhaIndex = afterRow + 2;
+
+        // Proteção: Não inserir antes dos dados móveis
+        if (novaLinhaIndex <= fixedDataIndex) {
+            novaLinhaIndex = fixedDataIndex + 1;
+        }
+        // Proteção: Não inserir depois do rodapé
+        if (novaLinhaIndex >= linhas.size()) {
+            novaLinhaIndex = linhas.size() - 1;
         }
 
-        // Cabeçalho na linha 0
+        // Monta a nova linha (Ex: "0;...;00:00")
         String header = linhas.get(0);
         int numCols = header.split(";", -1).length;
+        String novaLinha = criarLinhaVazia(numCols);
 
-        // ---------- CÁLCULO DO ÍNDICE DE INSERÇÃO NO ARQUIVO ----------
-        // Se só tiver cabeçalho, vamos inserir logo abaixo dele
-        if (linhas.size() == 1) {
-            afterRow = 0; // primeira linha de dados da JTable
-        }
+        // 1. Insere na lista
+        linhas.add(novaLinhaIndex, novaLinha);
 
-        // Último índice de dados no arquivo (penúltima linha, pois a última é ENCERRAMENTO/TOTAL)
-        // Ex.: header(0), dados(1..N), ENC( N+1 ) → lastDataIndex = N = linhas.size() - 2
-        int lastDataIndex = Math.max(1, linhas.size() - 2);
+        // 2. Empurra os Locks para baixo (+1)
+        lockService.shiftLocks(relPath, novaLinhaIndex, 1);
 
-        // Garante que o afterRow (modelRow) está dentro da faixa de dados
-        // modelRow 0..N-1  → arquivo 1..N
-        int clampedAfterRow = Math.max(0, Math.min(afterRow, lastDataIndex - 1));
+        // 3. Renumera páginas (da primeira linha móvel até antes do rodapé)
+        int footerIndex = linhas.size() - 1;
+        renumerarPaginas(linhas, fixedDataIndex + 1, footerIndex - 1);
 
-        // Linha correspondente no ARQUIVO à linha selecionada no MODEL
-        int baseIndex = clampedAfterRow + 1; // model 0 -> arquivo 1, model 1 -> arquivo 2, ...
-
-        // Queremos inserir ABAIXO da selecionada
-        int novaLinhaIndex = baseIndex + 1;  // logo depois da linha base
-
-        // Não deixar inserir DEPOIS da linha ENCERRAMENTO.
-        // Se novaLinhaIndex for maior que o índice da linha ENCERRAMENTO, 
-        // clampa para antes dela.
-        int encIndex = linhas.size() - 1; // última linha do arquivo
-        if (novaLinhaIndex > encIndex) {
-            novaLinhaIndex = encIndex; // insere antes do ENCERRAMENTO
-        }
-
-        // ---------- CÁLCULO DO num_pag (1ª coluna) ----------
-        int numPag = 1;
-        int idxLinhaAnterior = novaLinhaIndex - 1;
-
-        if (idxLinhaAnterior >= 1 && idxLinhaAnterior < linhas.size()) {
-            String linhaAnterior = linhas.get(idxLinhaAnterior);
-            String[] colsAnt = linhaAnterior.split(";", -1);
-            if (colsAnt.length > 0) {
-                try {
-                    int anterior = Integer.parseInt(colsAnt[0].trim());
-                    numPag = anterior + 1;
-                } catch (NumberFormatException e) {
-                    // se não for número, mantém 1 (ou outro padrão)
-                }
-            }
-        }
-
-        // ---------- MONTA A NOVA LINHA (MESMO PADRÃO DA TABELA) ----------
-        StringBuilder novaLinha = new StringBuilder();
-        for (int i = 0; i < numCols; i++) {
-            if (i > 0) {
-                novaLinha.append(';');
-            }
-
-            if (i == 0) {
-                // primeira coluna = num_pag sequencial
-                novaLinha.append(numPag);
-            } else if (i == 8 || i == 9 || i == 10) {
-                // colunas de tempo hh:mm
-                novaLinha.append("00:00");
-            } else if (i == 13) {
-                // total hh:mm:ss
-                novaLinha.append("00:00:00");
-            } else {
-                novaLinha.append("");
-            }
-        }
-
-        // ---------- INSERE NO ARQUIVO E SALVA ----------
-        linhas.add(novaLinhaIndex, novaLinha.toString());
-
-        Files.write(
-                file,
-                linhas,
-                StandardCharsets.UTF_8,
-                StandardOpenOption.TRUNCATE_EXISTING
-        );
-
-        // Notifica os outros clientes que UMA LINHA FOI INSERIDA
-        // afterRow aqui é o índice do MODEL (linha selecionada na JTable)
+        // 4. Salva e Notifica
+        Files.write(file, linhas, StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING);
+        
         SheetRowInsertedEvent ev = new SheetRowInsertedEvent(relPath, afterRow, username);
         broadcaster.sendRowInserted(ev);
     }
 
-    public void moveRow(String path, int from, int to) throws Exception {
-        // 1) Resolve path do CSV no filesystem
-        Path abs = resolveSheet(path); // ex.: /srv/mirrorpage/Produtos/BDBR/Prelim.csv
+    /**
+     * Move uma linha de lugar, validando locks e renumerando.
+     */
+    public void moveRow(String path, int from, int to, String username) throws Exception {
+        Path abs = resolveSheet(path);
+        List<String> linhas = Files.readAllLines(abs, StandardCharsets.UTF_8);
 
-        // 2) Carrega todas as linhas do CSV
-        List<String> linhas = Files.readAllLines(abs);
+        if (linhas.size() < 4) return;
 
-        if (linhas.size() <= 1) {
-            // só cabeçalho ou vazio, nada pra mover
-            return;
-        }
+        // 1. Valida se a linha de origem está livre de locks de outros usuários
+        validarLinhaLivre(path, from, username, linhas);
 
-        // Supondo primeira linha = header, linhas de dados começam em 1
         int headerIndex = 0;
-        int dataSize = linhas.size() - 1;
+        int fixedDataIndex = 1;
+        int footerIndex = linhas.size() - 1;
 
-        if (from < 0 || from >= dataSize || to < 0 || to >= dataSize) {
-            // índices inválidos → joga fora
-            return;
-        }
-
-        // shift +1 porque no arquivo a linha 0 é header
+        // Índices reais no arquivo
         int realFrom = headerIndex + 1 + from;
-        int realTo = headerIndex + 1 + to;
+        int realTo   = headerIndex + 1 + to;
 
-        if (realFrom == realTo) {
-            return;
-        }
+        // Proteções de Segurança (Topo e Rodapé)
+        if (realFrom <= fixedDataIndex || realTo <= fixedDataIndex) return;
+        if (realFrom >= footerIndex || realTo >= footerIndex) return;
+        if (realFrom == realTo) return;
 
+        // 2. Executa o Movimento
         List<String> mut = new ArrayList<>(linhas);
-
         String linhaMovida = mut.remove(realFrom);
-        // se removeu antes, o índice destino pode mudar
-        if (realTo > realFrom) {
-            realTo--; // lista ficou menor
-        }
+        
+        // Adiciona exatamente na posição de destino (sem decremento)
         mut.add(realTo, linhaMovida);
 
-        // 3) Salva de volta o CSV
-        Files.write(abs, mut);
+        // OBS: No movimento, o lock "viaja" com a linha? 
+        // Geralmente em drag&drop soltamos o lock. Se precisar mover lock, seria complexo aqui.
+        // Assumimos que ao mover, os locks daquela linha específica são liberados ou mantidos na posição física.
+        // Se quiser mover locks: lockService.moveLock(path, realFrom, realTo); (Lógica customizada necessária)
 
-        // 4) Notifica via WebSocket
-        RowMoveEvent event = new RowMoveEvent(path, from, to);
-        broadcaster.sendRowMoved(event);
+        // 3. Renumera
+        renumerarPaginas(mut, fixedDataIndex + 1, footerIndex - 1);
+
+        // 4. Salva e Notifica
+        Files.write(abs, mut, StandardCharsets.UTF_8);
+        broadcaster.sendRowMoved(new RowMoveEvent(path, from, to, username));
     }
 
-    /*──────── Excluir linha ────────*/
-    public void deleteRow(String relPath, int rowIndex) throws IOException {
-        Path file = resolveSheet(relPath);
+    /**
+     * Exclui uma linha, puxa locks para cima e renumera.
+     */
+    public void deleteRow(String path, int modelRow, String username) throws Exception {
+        Path abs = resolveSheet(path);
+        List<String> linhas = Files.readAllLines(abs, StandardCharsets.UTF_8);
 
-        List<String> linhas = Files.exists(file)
-                ? Files.readAllLines(file, StandardCharsets.UTF_8)
-                : new ArrayList<>();
+        if (linhas.size() < 3) return;
 
-        if (linhas.isEmpty()) {
-            return;
-        }
+        // 1. Valida se a linha tem locks ativos
+        validarLinhaLivre(path, modelRow, username, linhas);
 
-        String headerLine = linhas.get(0);
-        String[] header = headerLine.split(";", -1);
+        int headerIndex = 0;
+        int fixedDataIndex = 1;
+        int footerIndex = linhas.size() - 1;
 
-        List<String[]> rows = new ArrayList<>();
-        for (int i = 1; i < linhas.size(); i++) {
-            String linha = linhas.get(i);
-            if (linha.isBlank()) {
-                continue;
-            }
-            rows.add(linha.split(";", -1));
-        }
+        int fileIndex = headerIndex + 1 + modelRow;
 
-        if (rowIndex < 0 || rowIndex >= rows.size()) {
-            // fora do intervalo, não faz nada
-            return;
-        }
+        // Proteções
+        if (fileIndex <= fixedDataIndex) throw new IllegalArgumentException("Linha fixa não pode ser excluída.");
+        if (fileIndex >= footerIndex) throw new IllegalArgumentException("Rodapé não pode ser excluído.");
 
-        // se houver linha TOTAL no final que não deve ser apagada,
-        // você pode proteger aqui (exemplo):
-        // int lastIndex = rows.size() - 1;
-        // if (rowIndex == lastIndex && isLinhaTotal(rows.get(lastIndex))) return;
-        rows.remove(rowIndex);
+        // 2. Remove a linha
+        List<String> mut = new ArrayList<>(linhas);
+        mut.remove(fileIndex);
 
-        // se precisar renumerar primeira coluna:
-        // renumerarPrimeiraColuna(rows);
-        // opcional: recalcular tempos/totais
-        String csv = toCsv(header, rows);
-        Files.writeString(file, csv, StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        // 3. Puxa os Locks de baixo para cima (-1)
+        // Começando da linha que ocupou o lugar da excluída
+        lockService.shiftLocks(path, fileIndex + 1, -1);
+
+        // 4. Renumera
+        int novoFooterIndex = mut.size() - 1;
+        renumerarPaginas(mut, fixedDataIndex + 1, novoFooterIndex - 1);
+
+        // 5. Salva e Notifica
+        Files.write(abs, mut, StandardCharsets.UTF_8);
+        broadcaster.sendRowDeleted(new RowDeletedEvent(path, modelRow, username));
     }
 
-    /*──────── Helpers ────────*/
+    // =========================================================================
+    // MÉTODOS AUXILIARES PRIVADOS
+    // =========================================================================
+
     private Path resolveSheet(String relPath) {
-        // adapta para o seu PathResolver real
         return pathResolver.resolveSafe(relPath);
     }
 
-    private String toCsv(String[] header, List<String[]> rows) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(join(header)).append('\n');
-        for (String[] r : rows) {
-            sb.append(join(r)).append('\n');
+    /**
+     * Garante que a Coluna 0 tenha numeração sequencial (1, 2, 3...)
+     */
+    private void renumerarPaginas(List<String> linhas, int startRow, int endRow) {
+        int numeroPagina = 1;
+        String sep = ";";
+
+        for (int i = startRow; i <= endRow; i++) {
+            String linha = linhas.get(i);
+            String[] cols = linha.split(java.util.regex.Pattern.quote(sep), -1);
+
+            if (cols.length > 0) {
+                String novoNum = String.valueOf(numeroPagina);
+                if (!cols[0].equals(novoNum)) {
+                    cols[0] = novoNum;
+                    linhas.set(i, String.join(sep, cols));
+                }
+            }
+            numeroPagina++;
         }
-        return sb.toString();
     }
 
-    private String join(String[] arr) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < arr.length; i++) {
-            sb.append(escape(arr[i]));
-            if (i < arr.length - 1) {
-                sb.append(';');
+    /**
+     * Verifica se existe algum lock de OUTRO usuário na linha.
+     */
+    private void validarLinhaLivre(String path, int modelRow, String username, List<String> linhas) {
+        if (linhas.isEmpty()) return;
+        String header = linhas.get(0);
+        int numCols = header.split(";", -1).length;
+
+        for (int col = 0; col < numCols; col++) {
+            String owner = lockService.getOwner(path, modelRow, col);
+            if (owner != null && !owner.equals(username)) {
+                throw new IllegalStateException("Linha bloqueada. Coluna " + (col + 1) + " em edição por: " + owner);
             }
         }
+    }
+
+    private String criarLinhaVazia(int numCols) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < numCols; i++) {
+            if (i > 0) sb.append(';');
+            if (i == 0) sb.append("0"); // Num Pag provisório
+            else if (i == 8 || i == 9 || i == 10) sb.append("00:00");
+            else if (i == 13) sb.append("00:00:00");
+            else sb.append("");
+        }
         return sb.toString();
     }
-
-    private String escape(String s) {
-        if (s == null) {
-            s = "";
-        }
-        boolean needQuotes = s.contains(";") || s.contains("\"") || s.contains("\n") || s.contains("\r");
-        String v = s.replace("\"", "\"\"");
-        return needQuotes ? "\"" + v + "\"" : v;
-    }
-
 }

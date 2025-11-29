@@ -37,6 +37,7 @@ com\app\mirrorpage\server\config\SecurityBeans.class
 com\app\mirrorpage\ServerApplication.class
 com\app\mirrorpage\api\FileController.class
 com\app\mirrorpage\api\SheetController.class
+com\app\mirrorpage\server\tabel\RowDeletedEvent.class
 com\app\mirrorpage\server\domain\user\User.class
 com\app\mirrorpage\server\web\admin\AdminUserController.class
 com\app\mirrorpage\api\AuthController$RefreshRequest.class
@@ -49,6 +50,7 @@ com\app\mirrorpage\api\AuthController$RefreshResponse.class
 com\app\mirrorpage\server\prefs\UserPreference.class
 com\app\mirrorpage\server\tabel\CellLockService.class
 com\app\mirrorpage\server\tabel\RowMoveEvent.class
+com\app\mirrorpage\api\dto\DeleteRowRequest.class
 com\app\mirrorpage\server\web\admin\AdminUserController$CreateUserRequest.class
 com\app\mirrorpage\api\AuthController$LoginRequest.class
 com\app\mirrorpage\server\tree\TreeEventBroadcaster.class

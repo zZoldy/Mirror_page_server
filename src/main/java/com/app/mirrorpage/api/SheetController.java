@@ -4,6 +4,7 @@
  */
 package com.app.mirrorpage.api;
 
+import com.app.mirrorpage.api.dto.DeleteRowRequest;
 import com.app.mirrorpage.api.dto.MoveRowRequest;
 import com.app.mirrorpage.fs.PathResolver;
 import com.app.mirrorpage.server.service.SheetEventBroadcaster;
@@ -158,14 +159,10 @@ public class SheetController {
             }
 
             String linha = linhas.get(fileRow);
-            System.out.println("[SAVE-CELL SERVER] linha ANTES = '" + linha + "'");
 
             // CSV separado por ;
             String sep = ";";
             String[] cols = linha.split(java.util.regex.Pattern.quote(sep), -1);
-
-            System.out.println("[SAVE-CELL SERVER] cols.length (antes) = " + cols.length);
-            System.out.println("[SAVE-CELL SERVER] col pedida = " + col);
 
             if (col < 0) {
                 return ResponseEntity.badRequest().body("Column out of bounds");
@@ -182,14 +179,9 @@ public class SheetController {
                     novo[i] = "";
                 }
                 cols = novo;
-
-                System.out.printf("[SAVE-CELL SERVER] expandindo colunas de %d para %d%n",
-                        oldLen, newLen);
             }
 
             String newVal = (req.value() != null) ? req.value() : "";
-            System.out.printf("[SAVE-CELL SERVER] alterando col=%d de '%s' para '%s'%n",
-                    col, cols[col], newVal);
 
             cols[col] = newVal;
 
@@ -197,10 +189,6 @@ public class SheetController {
             linhas.set(fileRow, novaLinha);
 
             Files.write(filePath, linhas, StandardCharsets.UTF_8);
-
-            System.out.println("[SAVE-CELL SERVER] linha DEPOIS = '" + novaLinha + "'");
-            System.out.println("[SAVE-CELL SERVER] arquivo salvo OK");
-
             // 🔔 Dispara evento para outros clientes usando o broadcaster
             SheetCellChangeEvent evt = new SheetCellChangeEvent(
                     req.path(), // ex: "/GCO/Prelim.csv"
@@ -209,10 +197,6 @@ public class SheetController {
                     newVal,
                     user
             );
-
-            System.out.println("[SAVE-CELL SERVER] chamando SheetEventBroadcaster com evt="
-                    + evt + " e broadcaster=" + sheetEventBroadcaster.getClass().getName());
-
             sheetEventBroadcaster.sendCellChange(evt);
 
             return ResponseEntity.ok().build();
@@ -254,7 +238,29 @@ public class SheetController {
 
     @PostMapping("/moveRow")
     public ResponseEntity<Void> moveRow(@RequestBody MoveRowRequest req) throws Exception {
-        sheetService.moveRow(req.path(), req.from(), req.to());
+        System.out.println("Path: " + req.path() + " From: " + req.from() + " to: " + req.to() + " User: " + req.user());
+        sheetService.moveRow(req.path(), req.from(), req.to(), req.user());
         return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/deleteRow")
+    public ResponseEntity<?> deleteRow(@RequestBody DeleteRowRequest req) {
+        try {
+            sheetService.deleteRow(req.path(), req.row(), req.user());
+
+            return ResponseEntity.ok().build();
+
+        } catch (IllegalStateException e) {
+            // Conflito de Lock
+            return ResponseEntity.status(409).body(e.getMessage());
+
+        } catch (IllegalArgumentException e) {
+            // Tentou apagar linha fixa/rodapé
+            return ResponseEntity.badRequest().body(e.getMessage());
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
     }
 }

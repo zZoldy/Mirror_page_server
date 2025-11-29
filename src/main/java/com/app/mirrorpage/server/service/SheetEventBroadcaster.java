@@ -4,6 +4,7 @@
  */
 package com.app.mirrorpage.server.service;
 
+import com.app.mirrorpage.server.tabel.RowDeletedEvent;
 import com.app.mirrorpage.server.tabel.RowMoveEvent;
 import com.app.mirrorpage.server.tabel.SheetCellChangeEvent;
 import com.app.mirrorpage.server.tabel.SheetRowInsertedEvent;
@@ -44,7 +45,22 @@ public class SheetEventBroadcaster {
         System.out.println("[WS] RowMovedEvent para " + topic
                 + " path=" + ev.path()
                 + " from=" + ev.from()
-                + " to=" + ev.to());
+                + " to=" + ev.to()
+                + " user=" + ev.user());
+        messagingTemplate.convertAndSend(topic, ev);
+    }
+
+    public void sendRowDeleted(RowDeletedEvent ev) {
+        // 1. Define o tópico de destino (mesma lógica dos outros)
+        String topic = "/topic/sheet/" + toTopic(ev.path());
+
+        // 2. Log no servidor
+        System.out.println("[WS] RowDeletedEvent para " + topic
+                + " path=" + ev.path()
+                + " row=" + ev.modelRow()
+                + " user=" + ev.user());
+
+        // 3. Envia o objeto (o Record será serializado para JSON automaticamente)
         messagingTemplate.convertAndSend(topic, ev);
     }
 

@@ -7,6 +7,8 @@ package com.app.mirrorpage.server.tabel;
 public record RowMoveEvent(
         String path, // ex.: "/BDBR/Prelim.csv"
         int from, // índice de origem (model)
-        int to // índice de destino (model)
+        int to, // índice de destino (model)
+        String user
         ) {
+
 }
