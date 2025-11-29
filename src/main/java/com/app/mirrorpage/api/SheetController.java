@@ -236,11 +236,24 @@ public class SheetController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/moveRow")
-    public ResponseEntity<Void> moveRow(@RequestBody MoveRowRequest req) throws Exception {
-        System.out.println("Path: " + req.path() + " From: " + req.from() + " to: " + req.to() + " User: " + req.user());
-        sheetService.moveRow(req.path(), req.from(), req.to(), req.user());
-        return ResponseEntity.ok().build();
+@PostMapping("/moveRow")
+    public ResponseEntity<?> moveRow(@RequestBody MoveRowRequest req) {
+        try {
+            System.out.println("Path: " + req.path() + " From: " + req.from() + " to: " + req.to() + " User: " + req.user());
+            
+            sheetService.moveRow(req.path(), req.from(), req.to(), req.user());
+            
+            return ResponseEntity.ok().build();
+
+        } catch (IllegalStateException e) {
+            // [CORREÇÃO] Captura o erro "Movimento bloqueado" e retorna 409 Conflict
+            // Assim o ApiClient entende e mostra o aviso, em vez de estourar Exception 500
+            return ResponseEntity.status(409).body(e.getMessage());
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
     }
 
     @PostMapping("/deleteRow")
