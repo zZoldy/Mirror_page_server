@@ -5,6 +5,7 @@
 package com.app.mirrorpage.server.config;
 
 import org.springframework.context.annotation.Configuration;
+import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
@@ -14,20 +15,27 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
+    private final AuthChannelInterceptor authInterceptor;
+
+    public WebSocketConfig(AuthChannelInterceptor authInterceptor) {
+        this.authInterceptor = authInterceptor;
+    }
+
+    // ... (seus métodos configureMessageBroker e registerStompEndpoints continuam iguais) ...
     @Override
-    public void registerStompEndpoints(StompEndpointRegistry registry) {
-        // Endpoint do WS: ws://host:port/ws
-        registry.addEndpoint("/ws").setAllowedOriginPatterns("*");
-        // Se fosse navegador, daria pra usar SockJS:
-        // registry.addEndpoint("/ws").setAllowedOriginPatterns("*").withSockJS();
+    public void configureMessageBroker(MessageBrokerRegistry config) {
+        config.enableSimpleBroker("/topic");
+        config.setApplicationDestinationPrefixes("/app");
     }
 
     @Override
-    public void configureMessageBroker(MessageBrokerRegistry config) {
-        // Prefixo de mensagens "da aplicação" (se usar @MessageMapping depois)
-        config.setApplicationDestinationPrefixes("/app");
+    public void registerStompEndpoints(StompEndpointRegistry registry) {
+        registry.addEndpoint("/ws").setAllowedOrigins("*");
+    }
 
-        // Broker simples interno para tópicos broadcast: /topic/...
-        config.enableSimpleBroker("/topic");
+    // 🔴 OBRIGATÓRIO: Registra o interceptador aqui
+    @Override
+    public void configureClientInboundChannel(ChannelRegistration registration) {
+        registration.interceptors(authInterceptor);
     }
 }

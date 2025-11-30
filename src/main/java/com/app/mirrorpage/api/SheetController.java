@@ -236,13 +236,18 @@ public class SheetController {
         return ResponseEntity.noContent().build();
     }
 
-@PostMapping("/moveRow")
+    @GetMapping("/pastas")
+    public ResponseEntity<List<String>> getPastas() {
+        return ResponseEntity.ok(sheetService.listarPastasRaiz());
+    }
+
+    @PostMapping("/moveRow")
     public ResponseEntity<?> moveRow(@RequestBody MoveRowRequest req) {
         try {
             System.out.println("Path: " + req.path() + " From: " + req.from() + " to: " + req.to() + " User: " + req.user());
-            
+
             sheetService.moveRow(req.path(), req.from(), req.to(), req.user());
-            
+
             return ResponseEntity.ok().build();
 
         } catch (IllegalStateException e) {

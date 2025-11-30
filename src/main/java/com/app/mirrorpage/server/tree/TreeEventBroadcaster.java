@@ -1,30 +1,27 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package com.app.mirrorpage.server.tree;
 
 import com.app.mirrorpage.fs.PathResolver;
+import com.app.mirrorpage.fs.TreeChangeBus.ChangeDto;
 import java.nio.file.Path;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
 public class TreeEventBroadcaster {
 
     private final Path ROOT;
+    private final SimpMessagingTemplate messaging; // [NOVO] Injeção
 
-    private final InMemoryChangeStore buffer;
-
-    public TreeEventBroadcaster(InMemoryChangeStore buffer, PathResolver resolver) {
-        this.ROOT = resolver.getRoot();   // 💯 sempre funcionaf
-        this.buffer = buffer;
+    // [ALTERADO] Adicione SimpMessagingTemplate ao construtor
+    public TreeEventBroadcaster(PathResolver resolver, SimpMessagingTemplate messaging) {
+        this.ROOT = resolver.getRoot();
+        this.messaging = messaging;
     }
 
     private String toLogicalPath(java.nio.file.Path fullPath) {
         java.nio.file.Path root = ROOT;
         java.nio.file.Path rel = root.relativize(fullPath);
         String p = "/" + rel.toString().replace(java.io.File.separatorChar, '/');
-        // normalização estilo FsTree.normalizePath:
         p = p.replaceAll("/{2,}", "/");
         if (p.isBlank()) {
             return "/";
@@ -34,18 +31,25 @@ public class TreeEventBroadcaster {
 
     public void onCreate(java.nio.file.Path fullPath, boolean dir) {
         String path = toLogicalPath(fullPath);
-        buffer.append("CREATE", path, null, dir);
+        broadcast("CREATE", path, null, dir); // [NOVO] Dispara o aviso
     }
 
     public void onDelete(java.nio.file.Path fullPath, boolean dir) {
         String path = toLogicalPath(fullPath);
-        buffer.append("DELETE", path, null, dir);
+        broadcast("DELETE", path, null, dir); // [NOVO]
     }
 
     public void onModify(java.nio.file.Path fullPath, boolean dir) {
         String path = toLogicalPath(fullPath);
-        buffer.append("UPDATE", path, null, dir);
+        broadcast("UPDATE", path, null, dir); // [NOVO]
     }
 
-    // se quiser suportar rename, você teria que detectar isso pela combinação DELETE+CREATE
+    // [NOVO] Método auxiliar para enviar via WebSocket
+    private void broadcast(String type, String path, String newPath, boolean isDir) {
+        // Cria o objeto que será convertido em JSON
+        ChangeDto dto = new ChangeDto(type, path, newPath, String.valueOf(isDir), isDir);
+
+        // Envia para o tópico público
+        messaging.convertAndSend("/topic/tree-changes", dto);
+    }
 }

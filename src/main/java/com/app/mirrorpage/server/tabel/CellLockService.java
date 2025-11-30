@@ -106,6 +106,10 @@ public class CellLockService {
 
     /**
      * (Opcional) Move os locks matematicamente (Se não quiser usar o clearAll).
+     *
+     * @param path
+     * @param startRow
+     * @param amount
      */
     public synchronized void shiftLocks(String path, int startRow, int amount) {
         List<CellLock> locksToMove = new ArrayList<>();
@@ -133,6 +137,37 @@ public class CellLockService {
             locks.put(newKey, newLock);
 
             System.out.println("[LOCK SERVICE] Shift: Lock movido Row " + oldLock.row + " -> " + newRow);
+        }
+    }
+
+    /**
+     * Libera todos os locks segurados por um usuário específico.É chamado pelo
+ ActiveUserManager quando detecta desconexão. * @param username O nome do usuário que desconectou.
+     * @param username
+     */
+    public synchronized void releaseAllLocksByUser(String username) {
+        if (username == null) {
+            return;
+        }
+
+        // Lista temporária para guardar as chaves a remover
+        List<String> keysToRemove = new ArrayList<>();
+
+        // 1. Varre o mapa procurando locks desse usuário
+        locks.forEach((key, lock) -> {
+            // Verifica o dono (owner). 
+            // OBS: Se CellLock for 'record', use lock.owner(). Se for classe com campo publico, use lock.owner
+            if (lock.owner.equals(username)) {
+                keysToRemove.add(key);
+            }
+        });
+
+        // 2. Remove efetivamente
+        if (!keysToRemove.isEmpty()) {
+            keysToRemove.forEach(locks::remove);
+
+            System.out.printf("[LOCK SERVICE] Auto-Release: Liberados %d locks do usuário '%s' por desconexão.%n",
+                    keysToRemove.size(), username);
         }
     }
 }

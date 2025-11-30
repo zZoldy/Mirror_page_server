@@ -46,4 +46,19 @@ public class PathResolver {
         }
         return p;
     }
+
+    // Adicione isto na classe PathResolver
+    public static String toTopic(String path) {
+        if (path == null) {
+            return "";
+        }
+        // Troca barra invertida por normal
+        String s = path.trim().replace("\\", "/");
+
+        // Se começar com /, remove (para não ficar // no tópico)
+        if (s.startsWith("/")) {
+            s = s.substring(1);
+        }
+        return s;
+    }
 }

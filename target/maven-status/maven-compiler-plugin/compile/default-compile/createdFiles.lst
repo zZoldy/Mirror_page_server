@@ -1,11 +1,11 @@
 com\app\mirrorpage\api\PingController.class
 com\app\mirrorpage\server\tabel\UnlockCellRequest.class
 com\app\mirrorpage\server\prefs\UserPreferenceRepository.class
+com\app\mirrorpage\server\service\ActiveUserManager.class
 com\app\mirrorpage\api\TemaController.class
 com\app\mirrorpage\server\config\SecurityBeans$1.class
 com\app\mirrorpage\api\AuthController$AuthResponse.class
 com\app\mirrorpage\server\tabel\SheetCellChangeEvent.class
-com\app\mirrorpage\server\tree\InMemoryChangeStore.class
 com\app\mirrorpage\server\web\admin\AdminUserController$UserResponse.class
 com\app\mirrorpage\server\config\SecurityConfig.class
 com\app\mirrorpage\api\SheetController$1LockConflictResponse.class
@@ -30,6 +30,7 @@ com\app\mirrorpage\fs\TreeChangeBus$ChangeBatchDto.class
 com\app\mirrorpage\server\config\WebSocketConfig.class
 com\app\mirrorpage\api\dto\TreeNodeDto.class
 com\app\mirrorpage\fs\PathResolver.class
+com\app\mirrorpage\server\config\AuthChannelInterceptor.class
 com\app\mirrorpage\api\dto\MoveRowRequest.class
 com\app\mirrorpage\server\web\GlobalExceptionHandler.class
 com\app\mirrorpage\server\tabel\SheetRowInsertedEvent.class
@@ -41,9 +42,9 @@ com\app\mirrorpage\server\tabel\RowDeletedEvent.class
 com\app\mirrorpage\server\domain\user\User.class
 com\app\mirrorpage\server\web\admin\AdminUserController.class
 com\app\mirrorpage\api\AuthController$RefreshRequest.class
-com\app\mirrorpage\api\TreeChangesController.class
 com\app\mirrorpage\server\service\UserService.class
 com\app\mirrorpage\server\security\JwtService.class
+com\app\mirrorpage\server\config\WebSocketEventListener.class
 com\app\mirrorpage\api\AuthController.class
 com\app\mirrorpage\server\user\UserAccountServiceImpl.class
 com\app\mirrorpage\api\AuthController$RefreshResponse.class
@@ -58,6 +59,7 @@ com\app\mirrorpage\api\ValorDto.class
 com\app\mirrorpage\fs\TreeService.class
 com\app\mirrorpage\server\prefs\TemaService.class
 com\app\mirrorpage\server\repo\UserRepository.class
+com\app\mirrorpage\api\dto\SheetCellChangeEvent.class
 com\app\mirrorpage\api\dto\ChangeBatchDto.class
 com\app\mirrorpage\api\TreeController$SaveFileReq.class
 com\app\mirrorpage\fs\TreeChangeBus$ChangeDto.class

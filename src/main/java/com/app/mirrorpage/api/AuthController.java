@@ -1,7 +1,3 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package com.app.mirrorpage.api;
 
 import com.app.mirrorpage.server.domain.user.Role;
@@ -11,30 +7,23 @@ import com.app.mirrorpage.server.security.JwtService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import jakarta.validation.constraints.NotBlank;
 import java.util.List;
-import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
 
-    public record LoginRequest(@NotBlank String username, @NotBlank String password) {
+    public record LoginRequest(@NotBlank String username, @NotBlank String password) {}
 
-    }
+    // 🔴 1. ADICIONADO 'username' NA RESPOSTA
+    public record AuthResponse(String accessToken, String refreshToken, List<String> roles) {}
 
-    public record AuthResponse(String accessToken, String refreshToken, List<String> roles) {
+    public record RefreshRequest(@NotBlank String refreshToken) {}
 
-    }
-
-    public record RefreshRequest(@NotBlank String refreshToken) {
-
-    }
-
-    public record RefreshResponse(String accessToken) {
-
-    }
+    public record RefreshResponse(String accessToken) {}
 
     private final UserRepository users;
     private final PasswordEncoder encoder;
@@ -63,7 +52,7 @@ public class AuthController {
         return new AuthResponse(access, refresh, roles);
     }
 
-    // ========== [NOVO] Refresh do access token ==========
+    // ... (Método refresh permanece igual) ...
     @PostMapping("/refresh")
     @ResponseStatus(HttpStatus.OK)
     public RefreshResponse refresh(@RequestBody RefreshRequest req) {
@@ -81,5 +70,4 @@ public class AuthController {
         String newAccess = jwt.generateAccessToken(u);
         return new RefreshResponse(newAccess);
     }
-
 }

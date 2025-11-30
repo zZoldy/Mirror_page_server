@@ -11,7 +11,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -37,36 +40,29 @@ public class SheetService {
         return Files.readString(file, StandardCharsets.UTF_8);
     }
 
-// Em SheetService.java
-    public void insertRow(String relPath, int afterRow, String username) throws IOException {
+// Adicionado 'synchronized' para evitar conflito entre usuários
+    public synchronized void insertRow(String relPath, int afterRow, String username) throws IOException {
         Path file = resolveSheet(relPath);
 
         List<String> linhas = Files.exists(file)
                 ? Files.readAllLines(file, StandardCharsets.UTF_8)
                 : new ArrayList<>();
 
-        // Precisa ter estrutura mínima (Header + Fixa + Rodapé)
         if (linhas.isEmpty()) {
             return;
         }
 
-        // Índices de estrutura
-        int fixedDataIndex = 1; // Linha Fixa (não insere antes dela)
+        int fixedDataIndex = 1;
 
-        // Cálculo do índice de inserção no Arquivo Físico
-        // afterRow (Visual) + 2 = Posição logo após a linha selecionada
-        // Ex: Selecionou Linha Fixa (0) -> Insere no índice 2
+        // afterRow vem do cliente. +2 para pular Header e cair depois da selecionada.
         int novaLinhaIndex = afterRow + 2;
 
-        // Proteção: Não deixar inserir DEPOIS do rodapé
-        // Se o índice calculado cair no rodapé ou depois, ajusta para ANTES dele.
+        // Proteções de índice
         if (novaLinhaIndex >= linhas.size()) {
-            novaLinhaIndex = linhas.size() - 1;
+            novaLinhaIndex = linhas.size() - 1; // Antes do rodapé
         }
-
-        // Proteção: Não inserir antes dos dados móveis
         if (novaLinhaIndex <= fixedDataIndex) {
-            novaLinhaIndex = fixedDataIndex + 1;
+            novaLinhaIndex = fixedDataIndex + 1; // Depois da fixa
         }
 
         String header = linhas.get(0);
@@ -80,7 +76,6 @@ public class SheetService {
             }
 
             if (i == 0) {
-                // Coloca "0" temporariamente. O renumerarPaginas vai corrigir.
                 novaLinha.append("0");
             } else if (i == 8 || i == 9 || i == 10) {
                 novaLinha.append("00:00");
@@ -94,20 +89,21 @@ public class SheetService {
         // ===== 2. Insere na Lista =====
         linhas.add(novaLinhaIndex, novaLinha.toString());
 
-        // ===== 3. Renumera Tudo Automaticamente =====
-        // Agora que a lista cresceu, definimos o limite
+        int lockStartIndex = novaLinhaIndex - 1;
+        
+        // ===== 3. Ajusta Locks =====
+        // [CORREÇÃO] Move locks apenas da posição inserida para baixo
+        cellLockService.shiftLocks(relPath, lockStartIndex, 1);
+
+        // ===== 4. Renumera =====
         int footerIndex = linhas.size() - 1;
+        // [CORREÇÃO] Começa de fixedDataIndex (1) para garantir sequencia 1, 2, 3...
+        renumerarPaginas(linhas, fixedDataIndex +1, linhas.size() - 2);
 
-        // Renumera da primeira linha móvel (2) até antes do rodapé
-        renumerarPaginas(linhas, fixedDataIndex + 1, footerIndex - 1);
-
-        cellLockService.shiftLocks(relPath, fixedDataIndex, 1);
-
-        // ===== 4. Salva no Disco =====
-        // Escreve a lista corrigida e numerada
+        // ===== 5. Salva =====
         Files.write(file, linhas, StandardCharsets.UTF_8);
 
-        // ===== 5. Notifica =====
+        // ===== 6. Notifica =====
         SheetRowInsertedEvent ev = new SheetRowInsertedEvent(relPath, afterRow, username);
         broadcaster.sendRowInserted(ev);
     }
@@ -258,6 +254,43 @@ public class SheetService {
 
         // Avisa que a linha 'modelRow' foi deletada
         broadcaster.sendRowDeleted(new RowDeletedEvent(path, modelRow, username));
+    }
+
+    public List<String> listarPastasRaiz() {
+        // Resolve o caminho
+        Path dirProdutos = pathResolver.resolveSafe("");
+
+        // --- LOGS DE RASTREAMENTO ---
+        System.out.println("========================================");
+        System.out.println("[SERVER DEBUG] 1. Tentando ler pastas em:");
+        System.out.println("   -> " + dirProdutos.toAbsolutePath());
+        System.out.println("[SERVER DEBUG] 2. A pasta existe? " + Files.exists(dirProdutos));
+        System.out.println("[SERVER DEBUG] 3. É um diretório? " + Files.isDirectory(dirProdutos));
+
+        if (Files.exists(dirProdutos)) {
+            try {
+                System.out.println("[SERVER DEBUG] 4. Conteúdo encontrado:");
+                Files.list(dirProdutos).forEach(p -> System.out.println("   - " + p.getFileName()));
+            } catch (IOException e) {
+                System.out.println("   (Erro ao listar conteúdo)");
+            }
+        }
+        System.out.println("========================================");
+        // -----------------------------
+
+        if (!Files.exists(dirProdutos) || !Files.isDirectory(dirProdutos)) {
+            return Collections.emptyList();
+        }
+
+        try (Stream<Path> stream = Files.list(dirProdutos)) {
+            return stream
+                    .filter(Files::isDirectory)
+                    .map(path -> path.getFileName().toString())
+                    .collect(Collectors.toList());
+        } catch (IOException e) {
+            e.printStackTrace();
+            return Collections.emptyList();
+        }
     }
 
     /*──────── Helpers ────────*/

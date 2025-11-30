@@ -29,7 +29,9 @@ public class UserService {
         this.encoder = encoder;
     }
 
-    /** Cria um novo usuário com senha BCrypt e roles existentes no banco. */
+    /**
+     * Cria um novo usuário com senha BCrypt e roles existentes no banco.
+     */
     @Transactional
     public User createUser(String username, String rawPassword, Collection<String> roleNames) {
         if (username == null || username.isBlank()) {
@@ -50,12 +52,23 @@ public class UserService {
         Set<Role> resolvedRoles = new HashSet<>();
         if (roleNames != null && !roleNames.isEmpty()) {
             resolvedRoles = roleNames.stream()
-                .map(name -> roles.findByName(name)
+                    .map(name -> roles.findByName(name)
                     .orElseThrow(() -> new IllegalArgumentException("Role inexistente: " + name)))
-                .collect(Collectors.toSet());
+                    .collect(Collectors.toSet());
         }
         u.setRoles(resolvedRoles);
 
         return users.save(u);
+    }
+
+    /**
+     * Verifica se as credenciais são válidas. Retorna o User se ok, ou lança
+     * exceção/retorna null se falhar.
+     */
+    public User authenticate(String username, String rawPassword) {
+        return users.findByUsername(username)
+                .filter(u -> u.isEnabled()) // Verifica se está ativo
+                .filter(u -> encoder.matches(rawPassword, u.getPassword())) // Compara Hash BCrypt
+                .orElse(null);
     }
 }
