@@ -41,6 +41,10 @@ public class TreeService {
         try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir)) {
             for (Path p : ds) {
                 String name = p.getFileName().toString();
+                // 🛑 NOVO: Ignora a pasta "laudas" na listagem
+                if (name.equalsIgnoreCase("laudas")) {
+                    continue;
+                }
                 boolean isDir = Files.isDirectory(p);
                 BasicFileAttributes attrs = Files.readAttributes(p, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
                 long size = isDir ? 0L : attrs.size();

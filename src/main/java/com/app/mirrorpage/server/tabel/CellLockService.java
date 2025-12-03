@@ -142,7 +142,9 @@ public class CellLockService {
 
     /**
      * Libera todos os locks segurados por um usuário específico.É chamado pelo
- ActiveUserManager quando detecta desconexão. * @param username O nome do usuário que desconectou.
+     * ActiveUserManager quando detecta desconexão. * @param username O nome do
+     * usuário que desconectou.
+     *
      * @param username
      */
     public synchronized void releaseAllLocksByUser(String username) {

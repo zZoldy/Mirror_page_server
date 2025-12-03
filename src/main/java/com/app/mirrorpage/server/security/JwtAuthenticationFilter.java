@@ -4,6 +4,8 @@
  */
 package com.app.mirrorpage.server.security;
 
+import com.app.mirrorpage.server.domain.user.User;
+import com.app.mirrorpage.server.repo.UserRepository;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.JwtException;
@@ -32,9 +34,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     );
 
     private final JwtService jwt;
+    private final UserRepository userRepository; // 1. Injetamos o Repositório
 
-    public JwtAuthenticationFilter(JwtService jwt) {
+    // 2. Atualizamos o construtor
+    public JwtAuthenticationFilter(JwtService jwt, UserRepository userRepository) {
         this.jwt = jwt;
+        this.userRepository = userRepository;
     }
 
     @Override
@@ -45,19 +50,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         final String path = request.getRequestURI();
 
-        // 1) CORS preflight: nunca autenticar
         if (isCorsPreflight(request)) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        // 2) Rotas públicas: passam direto, sem autenticar
         if (isPublicPath(path)) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        // 3) Se não tem Bearer, segue sem autenticação
         String header = request.getHeader("Authorization");
         if (header == null || !header.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
@@ -69,28 +71,34 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             if (jwt.isValid(token)) {
                 Jws<Claims> claims = jwt.parse(token);
-
                 String username = claims.getBody().getSubject();
-                List<String> roles = jwt.getRoles(token); // ex.: ["SUPORTE","REDACAO"]
+                List<String> roles = jwt.getRoles(token);
 
-                var authorities = (roles == null ? List.<SimpleGrantedAuthority>of()
-                        : roles.stream()
-                                .map(r -> r.startsWith("ROLE_") ? r : "ROLE_" + r) // garante prefixo
-                                .map(SimpleGrantedAuthority::new)
-                                .toList());
+                // 3. BUSCAMOS O UTILIZADOR REAL NA BASE DE DADOS
+                // Se o utilizador não existir (foi apagado?), não autenticamos
+                User userEntity = userRepository.findByUsername(username).orElse(null);
 
-                var auth = new UsernamePasswordAuthenticationToken(username, null, authorities);
-                auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                if (userEntity != null) {
+                    var authorities = (roles == null ? List.<SimpleGrantedAuthority>of()
+                            : roles.stream()
+                                    .map(r -> r.startsWith("ROLE_") ? r : "ROLE_" + r)
+                                    .map(SimpleGrantedAuthority::new)
+                                    .toList());
 
-                // popula o SecurityContext
-                org.springframework.security.core.context.SecurityContextHolder
-                        .getContext().setAuthentication(auth);
+                    // 4. Passamos o objeto 'userEntity' como Principal, não apenas a String
+                    var auth = new UsernamePasswordAuthenticationToken(userEntity, null, authorities);
+                    auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+
+                    org.springframework.security.core.context.SecurityContextHolder
+                            .getContext().setAuthentication(auth);
+                } else {
+                    // Token válido, mas user não existe no banco
+                    org.springframework.security.core.context.SecurityContextHolder.clearContext();
+                }
             } else {
-                // token inválido/expirado: limpa contexto e segue
                 org.springframework.security.core.context.SecurityContextHolder.clearContext();
             }
         } catch (JwtException | IllegalArgumentException ex) {
-            // parsing/assinatura/expiração falhou: não autentica e segue
             org.springframework.security.core.context.SecurityContextHolder.clearContext();
         }
 
@@ -98,17 +106,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     private boolean isPublicPath(String path) {
-        if (PUBLIC_PATHS.contains(path)) {
-            return true;
-        }
-        // actuator/health etc. (se usar)
-        if (path.startsWith("/actuator")) {
-            return true;
-        }
-        // página de erro do Spring
-        if ("/error".equals(path)) {
-            return true;
-        }
+        if (PUBLIC_PATHS.contains(path)) return true;
+        if (path.startsWith("/actuator")) return true;
+        if ("/error".equals(path)) return true;
         return false;
     }
 

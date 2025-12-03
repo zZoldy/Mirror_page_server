@@ -1,33 +1,31 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package com.app.mirrorpage.server.prefs;
 
-import com.app.mirrorpage.server.user.UserAccountService;
-import org.springframework.security.core.Authentication;
+import com.app.mirrorpage.server.domain.user.User;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class TemaService {
 
     private final UserPreferenceRepository repo;
-    private final UserAccountService users;
+    
+    // 🗑️ REMOVIDO: private final UserAccountService users; (Causador do erro)
 
-    public TemaService(UserPreferenceRepository repo, UserAccountService users) {
+    public TemaService(UserPreferenceRepository repo) {
         this.repo = repo;
-        this.users = users;
     }
 
-    public String obterTema(Authentication auth) {
-        Long uid = users.loadUserIdByUsername(auth.getName());
-        return repo.findByIdUserIdAndIdKey(uid, "tema")
+    @Transactional(readOnly = true)
+    public String obterTema(User user) {
+        // Usamos user.getId() diretamente da memória! Sem SQL extra.
+        return repo.findByIdUserIdAndIdKey(user.getId(), "tema")
                    .map(UserPreference::getValue)
-                   .orElse("default");
+                   .orElse("ESCURO"); // Valor padrão seguro
     }
 
-    public void salvarTema(Authentication auth, String valor) {
-        Long uid = users.loadUserIdByUsername(auth.getName());
-        repo.upsert(uid, "tema", valor);
+    @Transactional
+    public void salvarTema(User user, String valor) {
+        if (valor == null) valor = "ESCURO";
+        repo.upsert(user.getId(), "tema", valor);
     }
 }

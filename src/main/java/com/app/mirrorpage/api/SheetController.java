@@ -1,12 +1,10 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package com.app.mirrorpage.api;
 
 import com.app.mirrorpage.api.dto.DeleteRowRequest;
 import com.app.mirrorpage.api.dto.MoveRowRequest;
+import com.app.mirrorpage.api.dto.PromoteRequest;
 import com.app.mirrorpage.fs.PathResolver;
+import com.app.mirrorpage.server.domain.user.User; // 1. Importe sua entidade User
 import com.app.mirrorpage.server.service.SheetEventBroadcaster;
 import com.app.mirrorpage.server.tabel.CellLock;
 import com.app.mirrorpage.server.tabel.CellLockRequest;
@@ -14,6 +12,7 @@ import com.app.mirrorpage.server.tabel.CellLockResponse;
 import com.app.mirrorpage.server.tabel.CellLockService;
 import com.app.mirrorpage.server.tabel.CellSaveRequest;
 import com.app.mirrorpage.server.tabel.SheetCellChangeEvent;
+import com.app.mirrorpage.server.tabel.SheetRowInsertedEvent;
 import com.app.mirrorpage.server.tabel.SheetService;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -22,7 +21,7 @@ import java.nio.file.Path;
 import java.util.List;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal; // 2. Importe a anotação
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -48,154 +47,110 @@ public class SheetController {
         this.sheetEventBroadcaster = sheetEventBroadcaster;
     }
 
+    // --- LOCK ---
     @PostMapping("/lock")
     public ResponseEntity<?> lock(@RequestBody CellLockRequest req,
-            Authentication auth) {
+            @AuthenticationPrincipal User user) { // 3. Use @AuthenticationPrincipal
 
-        String user = auth.getName();
+        if (user == null) {
+            return ResponseEntity.status(401).build();
+        }
+        String username = user.getUsername(); // Garante o nome limpo ("admin")
 
-        CellLock lock = lockService.acquire(req.path(), req.row(), req.col(), user);
+        CellLock lock = lockService.acquire(req.path(), req.row(), req.col(), username);
         if (lock == null) {
             String owner = lockService.getOwner(req.path(), req.row(), req.col());
 
             System.out.printf("[LOCK] RECUSADO path=%s row=%d col=%d ownerAtual=%s requisitante=%s%n",
-                    req.path(), req.row(), req.col(), owner, user);
+                    req.path(), req.row(), req.col(), owner, username);
 
-            // Resposta JSON
             record LockConflictResponse(String message, String owner) {
 
             }
-
-            LockConflictResponse body = new LockConflictResponse(
-                    "Cell already locked by another user",
-                    owner
-            );
-
-            return ResponseEntity.status(409).body(body);
+            return ResponseEntity.status(409).body(new LockConflictResponse("Cell already locked", owner));
         }
 
-        CellLockResponse resp = new CellLockResponse(
-                lock.path,
-                lock.row,
-                lock.col,
-                lock.owner,
-                lock.expiresAt
-        );
-        return ResponseEntity.ok(resp);
+        return ResponseEntity.ok(new CellLockResponse(
+                lock.path, lock.row, lock.col, lock.owner, lock.expiresAt
+        ));
     }
 
+    // --- UNLOCK ---
     @PostMapping("/unlock")
     public ResponseEntity<?> unlock(@RequestBody CellLockRequest req,
-            Authentication auth) throws Exception {
+            @AuthenticationPrincipal User user) {
 
-        String user = auth.getName(); // usuário logado
+        if (user == null) {
+            return ResponseEntity.status(401).build();
+        }
+        String username = user.getUsername();
 
-        // Pega o dono atual do lock
-        String ownerAtual = lockService.getOwner(req.path(), req.row(), req.col());
-
-        System.out.printf(
-                "[LOCK UNLOCK] pedido path=%s row=%d col=%d user=%s ownerAtual=%s%n",
-                req.path(), req.row(), req.col(), user, ownerAtual
-        );
-
-        // verifica se quem está tentando liberar é o dono do lock
-        if (!lockService.isOwner(req.path(), req.row(), req.col(), user)) {
-            System.out.printf(
-                    "[LOCK UNLOCK] NEGADO → Not lock owner (path=%s row=%d col=%d user=%s ownerAtual=%s)%n",
-                    req.path(), req.row(), req.col(), user, ownerAtual
-            );
+        // Verifica se é dono
+        if (!lockService.isOwner(req.path(), req.row(), req.col(), username)) {
+            System.out.printf("[LOCK UNLOCK] NEGADO (Not owner) user=%s%n", username);
             return ResponseEntity.status(403).body("Not lock owner");
         }
 
-        // libera lock
-        lockService.release(req.path(), req.row(), req.col(), user);
-
-        System.out.printf(
-                "[LOCK UNLOCK] OK → liberado path=%s row=%d col=%d user=%s%n",
-                req.path(), req.row(), req.col(), user
-        );
+        lockService.release(req.path(), req.row(), req.col(), username);
+        System.out.printf("[LOCK UNLOCK] OK user=%s%n", username);
 
         return ResponseEntity.ok().build();
     }
 
+    // --- SAVE CELL ---
     @PostMapping("/save-cell")
     public ResponseEntity<?> saveCell(@RequestBody CellSaveRequest req,
-            Authentication auth) {
-        String user = auth.getName();
+            @AuthenticationPrincipal User user) {
 
-        // row/col vindos do CLIENTE = índices do TableModel (JTable)
+        if (user == null) {
+            return ResponseEntity.status(401).build();
+        }
+        String username = user.getUsername();
+
         int modelRow = req.row();
         int col = req.col();
 
-        System.out.printf(
-                "[SAVE-CELL SERVER] path=%s modelRow=%d col=%d user=%s value='%s'%n",
-                req.path(), modelRow, col, user, req.value()
-        );
+        System.out.printf("[SAVE-CELL] path=%s row=%d col=%d user=%s val='%s'%n",
+                req.path(), modelRow, col, username, req.value());
 
         try {
             Path filePath = resolver.resolveSafe(req.path());
-            System.out.println("[SAVE-CELL SERVER] filePath=" + filePath);
-
             if (!Files.exists(filePath)) {
-                System.out.println("[SAVE-CELL SERVER] ERRO: arquivo não existe");
                 return ResponseEntity.notFound().build();
             }
 
             List<String> linhas = Files.readAllLines(filePath, StandardCharsets.UTF_8);
-            System.out.println("[SAVE-CELL SERVER] linhas.size=" + linhas.size());
-
-            // 🔥 AQUI ESTÁ O PULO DO GATO:
-            //  - linha 0 do arquivo = CABEÇALHO
-            //  - linha 1 do arquivo = modelRow 0
-            //  - linha 2 do arquivo = modelRow 1
-            int fileRow = modelRow + 1;
+            int fileRow = modelRow + 1; // Pula cabeçalho
 
             if (fileRow < 0 || fileRow >= linhas.size()) {
-                System.out.printf(
-                        "[SAVE-CELL SERVER] ERRO: fileRow fora do limite (fileRow=%d, size=%d)%n",
-                        fileRow, linhas.size()
-                );
                 return ResponseEntity.badRequest().body("Row out of bounds");
             }
 
+            // Lógica de manipulação do CSV (Mantida igual a sua)
             String linha = linhas.get(fileRow);
-
-            // CSV separado por ;
             String sep = ";";
             String[] cols = linha.split(java.util.regex.Pattern.quote(sep), -1);
 
             if (col < 0) {
-                return ResponseEntity.badRequest().body("Column out of bounds");
+                return ResponseEntity.badRequest().body("Col out of bounds");
             }
-
-            // Expande se precisar
             if (col >= cols.length) {
-                int oldLen = cols.length;
-                int newLen = col + 1;
-
-                String[] novo = new String[newLen];
-                System.arraycopy(cols, 0, novo, 0, oldLen);
-                for (int i = oldLen; i < newLen; i++) {
+                // Expande array
+                String[] novo = new String[col + 1];
+                System.arraycopy(cols, 0, novo, 0, cols.length);
+                for (int i = cols.length; i < novo.length; i++) {
                     novo[i] = "";
                 }
                 cols = novo;
             }
 
-            String newVal = (req.value() != null) ? req.value() : "";
-
-            cols[col] = newVal;
-
-            String novaLinha = String.join(sep, cols);
-            linhas.set(fileRow, novaLinha);
-
+            cols[col] = (req.value() != null) ? req.value() : "";
+            linhas.set(fileRow, String.join(sep, cols));
             Files.write(filePath, linhas, StandardCharsets.UTF_8);
-            // 🔔 Dispara evento para outros clientes usando o broadcaster
+
+            // 🔔 Broadcaster: Passamos o nome limpo (username), não o objeto User
             SheetCellChangeEvent evt = new SheetCellChangeEvent(
-                    req.path(), // ex: "/GCO/Prelim.csv"
-                    modelRow, // índice do MODEL (igual o cliente usa)
-                    col, // coluna
-                    newVal,
-                    user
+                    req.path(), modelRow, col, cols[col], username
             );
             sheetEventBroadcaster.sendCellChange(evt);
 
@@ -207,54 +162,35 @@ public class SheetController {
         }
     }
 
-    // ====== GET /api/sheet?path=...  -> usado pelo ApiClient.loadSheet ======
+    // --- OUTROS MÉTODOS (LOAD, INSERT, MOVE, DELETE) ---
+    // Mantém a lógica, mas idealmente use @AuthenticationPrincipal também
     @GetMapping
     public ResponseEntity<String> loadSheet(@RequestParam("path") String path) throws IOException {
-        // o cliente manda "/BDBR/Prelim.csv", o service espera algo tipo "BDBR/Prelim.csv"
         String relPath = path.replaceFirst("^[\\\\/]+", "");
-
-        String csv = sheetService.loadSheet(relPath);
-
-        return ResponseEntity
-                .ok()
+        return ResponseEntity.ok()
                 .contentType(MediaType.TEXT_PLAIN)
-                .body(csv);
+                .body(sheetService.loadSheet(relPath));
     }
 
     @PostMapping("/row/insert")
-    public ResponseEntity<Void> insertRow(
-            @RequestParam("path") String path,
+    public ResponseEntity<Void> insertRow(@RequestParam("path") String path,
             @RequestParam("afterRow") int afterRow,
-            java.security.Principal principal
-    ) throws IOException {
+            @AuthenticationPrincipal User user) throws IOException {
 
-        String username = principal != null ? principal.getName() : "unknown";
-
+        String username = (user != null) ? user.getUsername() : "unknown";
         sheetService.insertRow(path, afterRow, username);
-
-        // Mesmo esquema de edição: só status 204, sem corpo
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping("/pastas")
-    public ResponseEntity<List<String>> getPastas() {
-        return ResponseEntity.ok(sheetService.listarPastasRaiz());
-    }
-
     @PostMapping("/moveRow")
-    public ResponseEntity<?> moveRow(@RequestBody MoveRowRequest req) {
+    public ResponseEntity<?> moveRow(@RequestBody MoveRowRequest req, @AuthenticationPrincipal User user) {
         try {
-            System.out.println("Path: " + req.path() + " From: " + req.from() + " to: " + req.to() + " User: " + req.user());
-
-            sheetService.moveRow(req.path(), req.from(), req.to(), req.user());
-
+            // Preferência: usar o usuário do token, se disponível
+            String username = (user != null) ? user.getUsername() : req.user();
+            sheetService.moveRow(req.path(), req.from(), req.to(), username);
             return ResponseEntity.ok().build();
-
         } catch (IllegalStateException e) {
-            // [CORREÇÃO] Captura o erro "Movimento bloqueado" e retorna 409 Conflict
-            // Assim o ApiClient entende e mostra o aviso, em vez de estourar Exception 500
             return ResponseEntity.status(409).body(e.getMessage());
-
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.internalServerError().build();
@@ -262,23 +198,63 @@ public class SheetController {
     }
 
     @PostMapping("/deleteRow")
-    public ResponseEntity<?> deleteRow(@RequestBody DeleteRowRequest req) {
+    public ResponseEntity<?> deleteRow(@RequestBody DeleteRowRequest req, @AuthenticationPrincipal User user) {
         try {
-            sheetService.deleteRow(req.path(), req.row(), req.user());
+            String username = (user != null) ? user.getUsername() : req.user();
+            sheetService.deleteRow(req.path(), req.row(), username);
+            return ResponseEntity.ok().build();
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(409).body(e.getMessage());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/pastas")
+    public ResponseEntity<List<String>> getPastas() {
+        return ResponseEntity.ok(sheetService.listarPastasRaiz());
+    }
+
+    @PostMapping("/copy-to-final")
+    public ResponseEntity<?> copyToFinal(@RequestBody PromoteRequest req,
+            @AuthenticationPrincipal User user) {
+        // Proteção básica
+        if (user == null) {
+            return ResponseEntity.status(401).build();
+        }
+
+        try {
+            // Chama o seu SheetService atualizado
+            // Chama o serviço (que incrementa no Prelim e copia para o Final)
+            sheetService.copyRowToFinal(req.sourcePath(), req.sourceRow(), req.targetPath(), user.getUsername());
+
+            // 1. AVISA O FINAL (Destino)
+            // Quem estiver olhando o Final vai ver a linha aparecer/atualizar
+            SheetRowInsertedEvent eventoFinal = new SheetRowInsertedEvent(req.targetPath(), req.sourceRow(), user.getUsername());
+            sheetEventBroadcaster.sendRowInserted(eventoFinal);
+
+            // 2. AVISA O PRELIM (Origem)  <-- ADICIONE ISTO
+            // Quem estiver olhando o Prelim precisa ver o contador subir (ex: de 3 para 4)
+            // Ao enviar RowInserted na mesma linha, o frontend recarrega a linha com o valor novo
+            SheetRowInsertedEvent eventoPrelim = new SheetRowInsertedEvent(req.sourcePath(), req.sourceRow(), user.getUsername());
+            sheetEventBroadcaster.sendRowInserted(eventoPrelim);
 
             return ResponseEntity.ok().build();
 
         } catch (IllegalStateException e) {
-            // Conflito de Lock
+            // 🛑 AQUI É O PULO DO GATO:
+            // Captura o erro "Linha bloqueada por fulano" e manda como 409 Conflict
             return ResponseEntity.status(409).body(e.getMessage());
 
         } catch (IllegalArgumentException e) {
-            // Tentou apagar linha fixa/rodapé
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return ResponseEntity.badRequest().body("Linha não encontrada ou inválida.");
 
         } catch (Exception e) {
             e.printStackTrace();
-            return ResponseEntity.internalServerError().build();
+            return ResponseEntity.internalServerError().body("Erro interno: " + e.getMessage());
         }
     }
 }

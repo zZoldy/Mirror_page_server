@@ -3,6 +3,7 @@ package com.app.mirrorpage.server.tree;
 import com.app.mirrorpage.fs.PathResolver;
 import com.app.mirrorpage.fs.TreeChangeBus.ChangeDto;
 import java.nio.file.Path;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 
@@ -10,46 +11,41 @@ import org.springframework.stereotype.Component;
 public class TreeEventBroadcaster {
 
     private final Path ROOT;
-    private final SimpMessagingTemplate messaging; // [NOVO] Injeção
+    
+    @Autowired
+    private SimpMessagingTemplate messagingTemplate; // O carteiro do WebSocket
 
-    // [ALTERADO] Adicione SimpMessagingTemplate ao construtor
-    public TreeEventBroadcaster(PathResolver resolver, SimpMessagingTemplate messaging) {
+    public TreeEventBroadcaster(PathResolver resolver) {
         this.ROOT = resolver.getRoot();
-        this.messaging = messaging;
     }
 
-    private String toLogicalPath(java.nio.file.Path fullPath) {
-        java.nio.file.Path root = ROOT;
-        java.nio.file.Path rel = root.relativize(fullPath);
+    private String toLogicalPath(Path fullPath) {
+        Path rel = ROOT.relativize(fullPath);
         String p = "/" + rel.toString().replace(java.io.File.separatorChar, '/');
-        p = p.replaceAll("/{2,}", "/");
-        if (p.isBlank()) {
-            return "/";
-        }
-        return p;
+        return p.replaceAll("/{2,}", "/");
     }
 
-    public void onCreate(java.nio.file.Path fullPath, boolean dir) {
+    public void onCreate(Path fullPath, boolean dir) {
+        broadcast("CREATE", fullPath, dir);
+    }
+
+    public void onDelete(Path fullPath, boolean dir) {
+        broadcast("DELETE", fullPath, dir);
+    }
+
+    public void onModify(Path fullPath, boolean dir) {
+        broadcast("MODIFY", fullPath, dir);
+    }
+
+    private void broadcast(String type, Path fullPath, boolean isDir) {
         String path = toLogicalPath(fullPath);
-        broadcast("CREATE", path, null, dir); // [NOVO] Dispara o aviso
-    }
+        
+        // Cria o objeto que será transformado em JSON
+        // Ajuste os parâmetros conforme o construtor do seu ChangeDto no servidor
+        ChangeDto event = new ChangeDto(type, path, null, null, isDir);
 
-    public void onDelete(java.nio.file.Path fullPath, boolean dir) {
-        String path = toLogicalPath(fullPath);
-        broadcast("DELETE", path, null, dir); // [NOVO]
-    }
-
-    public void onModify(java.nio.file.Path fullPath, boolean dir) {
-        String path = toLogicalPath(fullPath);
-        broadcast("UPDATE", path, null, dir); // [NOVO]
-    }
-
-    // [NOVO] Método auxiliar para enviar via WebSocket
-    private void broadcast(String type, String path, String newPath, boolean isDir) {
-        // Cria o objeto que será convertido em JSON
-        ChangeDto dto = new ChangeDto(type, path, newPath, String.valueOf(isDir), isDir);
-
-        // Envia para o tópico público
-        messaging.convertAndSend("/topic/tree-changes", dto);
+        // Envia para o tópico que seu AppSocketClient está escutando
+        System.out.println("[WS Tree] Enviando " + type + " -> " + path);
+        messagingTemplate.convertAndSend("/topic/tree-changes", event);
     }
 }

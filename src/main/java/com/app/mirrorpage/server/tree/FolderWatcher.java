@@ -26,6 +26,10 @@ public class FolderWatcher implements InitializingBean {
         // registra raiz e subpastas
         Files.walk(ROOT_FS)
                 .filter(Files::isDirectory)
+                .filter(p -> {
+                    String rel = ROOT_FS.relativize(p).toString().replace("\\", "/");
+                    return !rel.toLowerCase().startsWith("laudas") && !rel.toLowerCase().startsWith("/laudas");
+                })
                 .forEach(dir -> {
                     try {
                         dir.register(
@@ -61,6 +65,13 @@ public class FolderWatcher implements InitializingBean {
 
                     Path name = (Path) ev.context();
                     Path fullPath = dir.resolve(name).normalize();
+
+                    // 🛑 FILTRO 2: Ignorar eventos vindos da pasta 'laudas'
+                    String relPath = ROOT_FS.relativize(fullPath).toString().replace("\\", "/");
+                    if (relPath.toLowerCase().startsWith("laudas") || relPath.toLowerCase().startsWith("/laudas")) {
+                        continue;
+                    }
+                    
                     boolean isDir = Files.isDirectory(fullPath);
 
                     System.out.println("[FolderWatcher] " + kind.name() + " em " + fullPath);

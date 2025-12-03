@@ -28,7 +28,6 @@ public class FsWatcher {
 
     private final Map<Path, WatchKey> keys = new ConcurrentHashMap<>();
 
-
     @PostConstruct
     public void start() {
         new Thread(this::watchLoop, "mirrorpage-fs-watcher").start();
@@ -51,8 +50,15 @@ public class FsWatcher {
                     Path name = (Path) event.context();
                     Path changed = dir.resolve(name).normalize();
 
+                    String relPath = "/" + ROOT.relativize(changed).toString().replace("\\", "/");
+
+                    // 🛑 FILTRO: Use toLowerCase() para garantir que pegue "laudas" ou "Laudas"
+                    if (relPath.toLowerCase().startsWith("/laudas")) {
+                        continue;
+                    }
+
                     if (Files.isDirectory(changed) && kind == StandardWatchEventKinds.ENTRY_CREATE) {
-                        registerAll(changed, watcher); // monitora novas subpastas
+                        registerAll(changed, watcher); // monitora novas subpastas (exceto laudas, pois o filtro acima já barrou)
                     }
 
                     String type = switch (kind.name()) {
@@ -66,7 +72,6 @@ public class FsWatcher {
                             kind.name();
                     };
 
-                    String relPath = "/" + ROOT.relativize(changed).toString().replace("\\", "/");
                     String parent = "/" + ROOT.relativize(changed.getParent()).toString().replace("\\", "/");
                     if ("/.".equals(parent)) {
                         parent = "/";
@@ -85,6 +90,10 @@ public class FsWatcher {
     private void registerAll(Path start, WatchService watcher) throws IOException {
         Files.walk(start)
                 .filter(Files::isDirectory)
+                .filter(p -> {
+                    String rel = "/" + ROOT.relativize(p).toString().replace("\\", "/");
+                    return !rel.startsWith("/laudas");
+                })
                 .forEach(p -> {
                     try {
                         WatchKey k = p.register(watcher,

@@ -6,10 +6,12 @@ package com.app.mirrorpage.server.tabel;
 
 import com.app.mirrorpage.fs.PathResolver;
 import com.app.mirrorpage.server.service.SheetEventBroadcaster;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -90,7 +92,7 @@ public class SheetService {
         linhas.add(novaLinhaIndex, novaLinha.toString());
 
         int lockStartIndex = novaLinhaIndex - 1;
-        
+
         // ===== 3. Ajusta Locks =====
         // [CORREÇÃO] Move locks apenas da posição inserida para baixo
         cellLockService.shiftLocks(relPath, lockStartIndex, 1);
@@ -98,7 +100,7 @@ public class SheetService {
         // ===== 4. Renumera =====
         int footerIndex = linhas.size() - 1;
         // [CORREÇÃO] Começa de fixedDataIndex (1) para garantir sequencia 1, 2, 3...
-        renumerarPaginas(linhas, fixedDataIndex +1, linhas.size() - 2);
+        renumerarPaginas(linhas, fixedDataIndex + 1, linhas.size() - 2);
 
         // ===== 5. Salva =====
         Files.write(file, linhas, StandardCharsets.UTF_8);
@@ -322,4 +324,141 @@ public class SheetService {
         }
     }
 
+    public synchronized void copyRowToFinal(String sourcePath, int sourceRow, String targetPath, String user) throws IOException {
+
+        // --- 1. PREPARAÇÃO DA ORIGEM (PRELIM) ---
+        Path srcCsv = pathResolver.resolveSafe(sourcePath);
+        if (!Files.exists(srcCsv)) {
+            throw new FileNotFoundException("Prelim não encontrado");
+        }
+
+        List<String> srcLines = Files.readAllLines(srcCsv, StandardCharsets.UTF_8);
+
+        // Validações básicas
+        if (sourceRow + 1 >= srcLines.size()) {
+            throw new IllegalArgumentException("A linha de origem não existe mais.");
+        }
+        validarLinhaLivre(sourcePath, sourceRow, user, srcLines);
+
+        // --- LÓGICA DO CONTADOR (INCREMENTA COLUNA 1) ---
+        String lineContent = srcLines.get(sourceRow + 1);
+        String[] columns = lineContent.split(";", -1);
+        int numCols = srcLines.get(0).split(";", -1).length; // Total colunas pelo header
+
+        // Expande array se necessário
+        if (columns.length < numCols) {
+            String[] newCols = new String[numCols];
+            System.arraycopy(columns, 0, newCols, 0, columns.length);
+            for (int i = 0; i < numCols; i++) {
+                if (newCols[i] == null) {
+                    newCols[i] = "";
+                }
+            }
+            columns = newCols;
+        }
+
+        // Incrementa
+        int contador = 0;
+        try {
+            if (!columns[1].trim().isEmpty()) {
+                contador = Integer.parseInt(columns[1].trim());
+            }
+        } catch (Exception e) {
+            contador = 0;
+        }
+
+        contador++;
+        columns[1] = String.valueOf(contador);
+        String lineContentUpdated = String.join(";", columns);
+
+        // Salva Prelim
+        srcLines.set(sourceRow + 1, lineContentUpdated);
+        Files.write(srcCsv, srcLines, StandardCharsets.UTF_8);
+
+        // --- 2. TRATAMENTO DO DESTINO (FINAL) COM RODAPÉ FIXO ---
+        Path tgtCsv = pathResolver.resolveSafe(targetPath);
+
+        // Se não existir, cria Header + Rodapé inicial
+        if (!Files.exists(tgtCsv)) {
+            Files.createFile(tgtCsv);
+            String header = srcLines.get(0);
+            String footer = ";".repeat(Math.max(0, numCols - 1)); // Rodapé vazio inicial
+            // Se tiver um texto padrão de rodapé, coloque aqui
+            Files.writeString(tgtCsv, header + "\n" + footer);
+        }
+
+        List<String> tgtLines = Files.readAllLines(tgtCsv, StandardCharsets.UTF_8);
+
+        // 🟢 PASSO A: REMOVER O RODAPÉ (Última linha)
+        // Guardamos ela na memória para colocar de volta no fim
+        String fixedFooterRow = "";
+        if (tgtLines.size() > 1) { // Tem Header + Pelo menos 1 linha
+            int lastIndex = tgtLines.size() - 1;
+            fixedFooterRow = tgtLines.remove(lastIndex); // Remove a última linha da lista
+        } else {
+            // Fallback se o arquivo estiver corrompido (só header)
+            fixedFooterRow = ";".repeat(Math.max(0, numCols - 1));
+        }
+
+        // 🟢 PASSO B: PREENCHER VAZIOS (PADDING)
+        // O alvo é sourceRow + 1 (por causa do header 0)
+        int targetListIndex = sourceRow + 1;
+
+        // Enquanto a lista (sem o rodapé) for menor que o índice alvo, enche de linhas vazias
+        while (tgtLines.size() <= targetListIndex) {
+            String emptyLine = ";".repeat(Math.max(0, numCols - 1));
+            tgtLines.add(emptyLine);
+        }
+
+        // 🟢 PASSO C: VERIFICAR LOCK E INSERIR
+        // Verifica se alguém está editando a linha onde vamos escrever
+        validarLinhaLivre(targetPath, sourceRow, user, tgtLines);
+
+        // Sobrescreve a linha alvo com os dados novos
+        tgtLines.set(targetListIndex, lineContentUpdated);
+
+        // 🟢 PASSO D: DEVOLVER O RODAPÉ
+        // Adiciona a linha fixa no final de tudo
+        tgtLines.add(fixedFooterRow);
+
+        // Salva o Final
+        Files.write(tgtCsv, tgtLines, StandardCharsets.UTF_8);
+
+        // --- 3. CÓPIA DA LAUDA ---
+        Path srcLaudaDir = resolveLaudaDir(sourcePath);
+        Path tgtLaudaDir = resolveLaudaDir(targetPath);
+        if (!Files.exists(tgtLaudaDir)) {
+            Files.createDirectories(tgtLaudaDir);
+        }
+
+        Path srcTxt = srcLaudaDir.resolve(sourceRow + ".txt");
+        Path tgtTxt = tgtLaudaDir.resolve(sourceRow + ".txt");
+
+        if (Files.exists(srcTxt)) {
+            Files.copy(srcTxt, tgtTxt, StandardCopyOption.REPLACE_EXISTING);
+        } else {
+            Files.deleteIfExists(tgtTxt);
+        }
+
+        System.out.println("[COPY] Sucesso. Linha " + sourceRow + " inserida. Rodapé empurrado para linha " + (tgtLines.size() - 1));
+    }
+
+    // 👇 ADICIONE ESTE MÉTODO PRIVADO NA SUA CLASSE SheetService
+    // Ele converte "/BDBR/Prelim.csv" em um Path para ".../laudas/_BDBR_Prelim"
+    private Path resolveLaudaDir(String csvRelPath) {
+        // 1. Remove a extensão .csv
+        String cleanName = csvRelPath.replace(".csv", "");
+
+        // 2. Troca as barras / ou \ por _ (para criar um nome de pasta plano)
+        // Ex: "BDBR/Prelim" vira "BDBR_Prelim"
+        String folderName = cleanName.replaceAll("[\\\\/]", "_");
+
+        // 3. Garante que começa com _ (padrão que vimos nos seus logs)
+        if (!folderName.startsWith("_")) {
+            folderName = "_" + folderName;
+        }
+
+        // 4. Usa o pathResolver para pegar o caminho completo dentro da pasta "laudas"
+        return pathResolver.resolveSafe("laudas/" + folderName);
+    }
 }

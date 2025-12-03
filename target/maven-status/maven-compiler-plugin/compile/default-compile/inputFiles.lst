@@ -3,11 +3,14 @@ C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\j
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\api\dto\ChangeBatchDto.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\api\dto\ChangeDto.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\api\dto\DeleteRowRequest.java
+C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\api\dto\FileLockEvent.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\api\dto\MoveRowRequest.java
+C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\api\dto\PromoteRequest.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\api\dto\RowInsertRequest.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\api\dto\SheetCellChangeEvent.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\api\dto\TreeNodeDto.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\api\FileController.java
+C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\api\FileLockController.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\api\PingController.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\api\SheetController.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\api\TemaController.java
@@ -32,6 +35,7 @@ C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\j
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\server\security\JwtAuthenticationFilter.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\server\security\JwtService.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\server\service\ActiveUserManager.java
+C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\server\service\FileLockService.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\server\service\SheetEventBroadcaster.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\server\service\UserService.java
 C:\Users\Z D K\OneDrive\Documentos\NetBeansProjects\mirrorpage_server\src\main\java\com\app\mirrorpage\server\tabel\CellLock.java
