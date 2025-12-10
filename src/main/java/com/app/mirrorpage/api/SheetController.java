@@ -19,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal; // 2. Importe a anotação
@@ -256,5 +257,27 @@ public class SheetController {
             e.printStackTrace();
             return ResponseEntity.internalServerError().body("Erro interno: " + e.getMessage());
         }
+    }
+
+    @PostMapping("/notify-restore")
+    public ResponseEntity<Void> notifyRestore(@RequestBody java.util.Map<String, String> payload) {
+        String path = payload.get("path"); // Ex: "/BDBR/Prelim.csv"
+        String user = payload.get("user");
+
+        if (path == null || path.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        System.out.printf("[API] Planilha restaurada: path=%s user=%s%n", path, user);
+
+        // --- [NOVO] Limpeza automática das Laudas ---
+        // Chama o serviço para apagar a pasta 'laudas'
+        sheetService.clearLaudas(path);
+
+        // --------------------------------------------
+        // Dispara o evento para todos os clientes conectados
+        sheetEventBroadcaster.sendSheetRestored(path, user);
+
+        return ResponseEntity.ok().build();
     }
 }

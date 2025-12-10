@@ -66,6 +66,7 @@ com\app\mirrorpage\server\prefs\TemaService.class
 com\app\mirrorpage\server\repo\UserRepository.class
 com\app\mirrorpage\api\dto\SheetCellChangeEvent.class
 com\app\mirrorpage\api\dto\ChangeBatchDto.class
+com\app\mirrorpage\api\dto\SheetRestoredEvent.class
 com\app\mirrorpage\api\TreeController$SaveFileReq.class
 com\app\mirrorpage\fs\TreeChangeBus$ChangeDto.class
 com\app\mirrorpage\server\repo\RoleRepository.class

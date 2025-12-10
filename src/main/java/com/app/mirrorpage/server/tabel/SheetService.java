@@ -61,54 +61,42 @@ public class SheetService {
 
         // Proteções de índice
         if (novaLinhaIndex >= linhas.size()) {
-            novaLinhaIndex = linhas.size() - 1; // Antes do rodapé
+            novaLinhaIndex = linhas.size() - 1;
         }
         if (novaLinhaIndex <= fixedDataIndex) {
-            novaLinhaIndex = fixedDataIndex + 1; // Depois da fixa
+            novaLinhaIndex = fixedDataIndex + 1;
         }
 
+        // --- LÓGICA DE LAUDAS ---
+        // 1. Descobre a pasta das laudas
+        Path laudaDir = resolveLaudaDir(relPath);
+
+        // 2. Calcula o intervalo que precisa mover (da nova linha até o fim dos dados)
+        int lastContentIndex = linhas.size() - 2;
+
+        // 3. Empurra os arquivos para baixo (+1) para abrir espaço
+        // Ex: Se inseriu na 5, o arquivo 5.txt vira 6.txt, o 6.txt vira 7.txt...
+        shiftLaudaFiles(laudaDir, novaLinhaIndex, lastContentIndex, 1);
+
+        // --- LÓGICA DO CSV ---
         String header = linhas.get(0);
         int numCols = header.split(";", -1).length;
+        String novaLinha = criarLinhaVazia(numCols);
 
-        // ===== 1. Monta a Nova Linha =====
-        StringBuilder novaLinha = new StringBuilder();
-        for (int i = 0; i < numCols; i++) {
-            if (i > 0) {
-                novaLinha.append(';');
-            }
+        // Insere na lista
+        linhas.add(novaLinhaIndex, novaLinha);
 
-            if (i == 0) {
-                novaLinha.append("0");
-            } else if (i == 8 || i == 9 || i == 10) {
-                novaLinha.append("00:00");
-            } else if (i == 13) {
-                novaLinha.append("00:00:00");
-            } else {
-                novaLinha.append("");
-            }
-        }
-
-        // ===== 2. Insere na Lista =====
-        linhas.add(novaLinhaIndex, novaLinha.toString());
-
-        int lockStartIndex = novaLinhaIndex - 1;
-
-        // ===== 3. Ajusta Locks =====
-        // [CORREÇÃO] Move locks apenas da posição inserida para baixo
-        cellLockService.shiftLocks(relPath, lockStartIndex, 1);
-
-        // ===== 4. Renumera =====
-        int footerIndex = linhas.size() - 1;
-        // [CORREÇÃO] Começa de fixedDataIndex (1) para garantir sequencia 1, 2, 3...
+        int startModelRow = afterRow + 1;
+        
+        // Ajusta Locks e Numeração
+        cellLockService.shiftLocks(relPath, startModelRow, +1);
         renumerarPaginas(linhas, fixedDataIndex + 1, linhas.size() - 2);
 
-        // ===== 5. Salva =====
+        // Salva e Notifica
         Files.write(file, linhas, StandardCharsets.UTF_8);
-
-        // ===== 6. Notifica =====
-        SheetRowInsertedEvent ev = new SheetRowInsertedEvent(relPath, afterRow, username);
-        broadcaster.sendRowInserted(ev);
+        broadcaster.sendRowInserted(new SheetRowInsertedEvent(relPath, afterRow, username));
     }
+    
 
     public void moveRow(String path, int from, int to, String username) throws Exception {
         Path abs = resolveSheet(path);
@@ -153,6 +141,11 @@ public class SheetService {
             return;
         }
 
+        Path laudaDir = resolveLaudaDir(path);
+        if (laudaDir != null) {
+            moveLaudaFile(laudaDir, realFrom, realTo);
+        }
+
         // --- MOVIMENTO EXATO ---
         List<String> mut = new ArrayList<>(linhas);
 
@@ -172,8 +165,87 @@ public class SheetService {
         // Se o próprio usuário que moveu tinha locks, eles seriam invalidados ou 
         // liberados pelo front ao soltar o mouse. É mais seguro não mexer no mapa de locks aqui.
         // Salva e notifica
+        
         Files.write(abs, mut, StandardCharsets.UTF_8);
         broadcaster.sendRowMoved(new RowMoveEvent(path, from, to, username));
+    }
+
+    private void moveLaudaFile(Path dir, int fromIndex, int toIndex) {
+        if (dir == null || !Files.exists(dir)) {
+            return;
+        }
+        if (fromIndex == toIndex) {
+            return;
+        }
+
+        // Regra de Nome: (Index - 1).txt
+        // Ex: Linha 2 do CSV é o arquivo "1.txt"
+        String fromName = (fromIndex - 1) + ".txt";
+        String toName = (toIndex - 1) + ".txt";
+
+        Path sourceFile = dir.resolve(fromName);
+
+        // Nome temporário para guardar o arquivo que está "viajando"
+        Path tempFile = dir.resolve("move_temp_" + System.currentTimeMillis() + ".tmp");
+
+        boolean sourceExists = Files.exists(sourceFile);
+
+        try {
+            // 1. Tira o arquivo de origem do caminho e guarda no Temp
+            if (sourceExists) {
+                Files.move(sourceFile, tempFile, StandardCopyOption.REPLACE_EXISTING);
+            }
+
+            // 2. Desloca os arquivos intermediários
+            if (fromIndex < toIndex) {
+                // Movendo para BAIXO (ex: de 2 para 5)
+                // O arquivo da 3 vira 2, 4 vira 3, 5 vira 4...
+                for (int i = fromIndex + 1; i <= toIndex; i++) {
+                    int currentIndex = i;
+                    int newIndex = i - 1;
+
+                    Path s = dir.resolve((currentIndex - 1) + ".txt");
+                    Path t = dir.resolve((newIndex - 1) + ".txt");
+
+                    if (Files.exists(s)) {
+                        Files.move(s, t, StandardCopyOption.REPLACE_EXISTING);
+                    } else {
+                        Files.deleteIfExists(t);
+                    }
+                }
+            } else {
+                // Movendo para CIMA (ex: de 5 para 2)
+                // O arquivo da 4 vira 5, 3 vira 4, 2 vira 3...
+                // Iteramos de trás para frente
+                for (int i = fromIndex - 1; i >= toIndex; i--) {
+                    int currentIndex = i;
+                    int newIndex = i + 1;
+
+                    Path s = dir.resolve((currentIndex - 1) + ".txt");
+                    Path t = dir.resolve((newIndex - 1) + ".txt");
+
+                    if (Files.exists(s)) {
+                        Files.move(s, t, StandardCopyOption.REPLACE_EXISTING);
+                    } else {
+                        Files.deleteIfExists(t);
+                    }
+                }
+            }
+
+            // 3. Coloca o arquivo original (que estava no Temp) no destino final
+            Path targetFile = dir.resolve(toName);
+            if (sourceExists) {
+                Files.move(tempFile, targetFile, StandardCopyOption.REPLACE_EXISTING);
+                System.out.println("[SERVER] Lauda movida de " + fromName + " para " + toName);
+            } else {
+                // Se a linha de origem não tinha lauda, garante que o destino fique vazio
+                Files.deleteIfExists(targetFile);
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+            System.err.println("[SERVER] Erro ao mover lauda: " + e.getMessage());
+        }
     }
 
     /**
@@ -233,6 +305,20 @@ public class SheetService {
         if (fileIndex >= footerIndex) {
             throw new IllegalArgumentException("Não é permitido excluir o rodapé.");
         }
+
+        Path laudaDir = resolveLaudaDir(path);
+
+        // A. Apaga o arquivo da linha atual
+        // Lembra da regra: Arquivo = Index - 1 (Ex: Linha 2 do CSV é o arquivo 1.txt)
+        // Se sua lógica mudou, ajuste aqui. Vou manter (index - 1) + ".txt"
+        String nomeArquivoParaDeletar = (fileIndex - 1) + ".txt";
+        Files.deleteIfExists(laudaDir.resolve(nomeArquivoParaDeletar));
+        System.out.println("[SERVER] Lauda deletada: " + nomeArquivoParaDeletar);
+
+        // B. Puxa os arquivos subsequentes para CIMA (delta = -1)
+        // Intervalo: da linha seguinte (fileIndex + 1) até a última linha de dados
+        int lastContentIndex = linhas.size() - 2;
+        shiftLaudaFiles(laudaDir, fileIndex + 1, lastContentIndex, -1);
 
         // --- 3. EXECUÇÃO ---
         List<String> mut = new ArrayList<>(linhas);
@@ -334,14 +420,27 @@ public class SheetService {
 
         List<String> srcLines = Files.readAllLines(srcCsv, StandardCharsets.UTF_8);
 
-        // Validações básicas
-        if (sourceRow + 1 >= srcLines.size()) {
+        if (srcLines.isEmpty()) {
+            throw new IllegalArgumentException("Arquivo de origem vazio.");
+        }
+
+        // Índice da linha no arquivo (0 = header)
+        int srcFileIndex = sourceRow + 1;
+
+        // 🔹 Aqui permitimos a ÚLTIMA linha (encerramento) também
+        if (srcFileIndex >= srcLines.size()) {
             throw new IllegalArgumentException("A linha de origem não existe mais.");
         }
+
+        // Descobre se a linha é a ÚLTIMA (encerramento)
+        boolean isEncerramento = (srcFileIndex == srcLines.size() - 1);
+
+        // Se quiser, você pode pular validação de lock para encerramento
+        // mas mantive igual para todos:
         validarLinhaLivre(sourcePath, sourceRow, user, srcLines);
 
         // --- LÓGICA DO CONTADOR (INCREMENTA COLUNA 1) ---
-        String lineContent = srcLines.get(sourceRow + 1);
+        String lineContent = srcLines.get(srcFileIndex);
         String[] columns = lineContent.split(";", -1);
         int numCols = srcLines.get(0).split(";", -1).length; // Total colunas pelo header
 
@@ -357,7 +456,6 @@ public class SheetService {
             columns = newCols;
         }
 
-        // Incrementa
         int contador = 0;
         try {
             if (!columns[1].trim().isEmpty()) {
@@ -366,59 +464,108 @@ public class SheetService {
         } catch (Exception e) {
             contador = 0;
         }
-
         contador++;
         columns[1] = String.valueOf(contador);
+
         String lineContentUpdated = String.join(";", columns);
 
-        // Salva Prelim
-        srcLines.set(sourceRow + 1, lineContentUpdated);
+        // Atualiza a linha na ORIGEM (Prelim)
+        srcLines.set(srcFileIndex, lineContentUpdated);
         Files.write(srcCsv, srcLines, StandardCharsets.UTF_8);
 
-        // --- 2. TRATAMENTO DO DESTINO (FINAL) COM RODAPÉ FIXO ---
+        // --- 2. TRATAMENTO DO DESTINO (FINAL) ---
         Path tgtCsv = pathResolver.resolveSafe(targetPath);
 
         // Se não existir, cria Header + Rodapé inicial
         if (!Files.exists(tgtCsv)) {
             Files.createFile(tgtCsv);
             String header = srcLines.get(0);
-            String footer = ";".repeat(Math.max(0, numCols - 1)); // Rodapé vazio inicial
-            // Se tiver um texto padrão de rodapé, coloque aqui
+            String footer = criarLinhaVazia(numCols).replaceFirst("^0", "");
             Files.writeString(tgtCsv, header + "\n" + footer);
         }
 
         List<String> tgtLines = Files.readAllLines(tgtCsv, StandardCharsets.UTF_8);
 
-        // 🟢 PASSO A: REMOVER O RODAPÉ (Última linha)
-        // Guardamos ela na memória para colocar de volta no fim
-        String fixedFooterRow = "";
-        if (tgtLines.size() > 1) { // Tem Header + Pelo menos 1 linha
-            int lastIndex = tgtLines.size() - 1;
-            fixedFooterRow = tgtLines.remove(lastIndex); // Remove a última linha da lista
-        } else {
-            // Fallback se o arquivo estiver corrompido (só header)
-            fixedFooterRow = ";".repeat(Math.max(0, numCols - 1));
+        if (tgtLines.isEmpty()) {
+            // Garante que tenha pelo menos header + rodapé
+            String header = srcLines.get(0);
+            String footer = criarLinhaVazia(numCols).replaceFirst("^0", "");
+            tgtLines.clear();
+            tgtLines.add(header);
+            tgtLines.add(footer);
         }
 
+        // 🟢 PASSO A: REMOVER O RODAPÉ (Última linha atual)
+        String fixedFooterRow;
+        if (tgtLines.size() > 1) {
+            int lastIndex = tgtLines.size() - 1;
+            fixedFooterRow = tgtLines.remove(lastIndex);
+        } else {
+            fixedFooterRow = criarLinhaVazia(numCols).replaceFirst("^0", "");
+        }
+
+        // 🔸 CASO ESPECIAL: SE A LINHA DE ORIGEM FOR ENCERRAMENTO
+        if (isEncerramento) {
+            // Aqui você decidiu que essa linha deve virar o NOVO rodapé do FINAL.
+            fixedFooterRow = lineContentUpdated;
+
+            // Opcional: renumerar páginas dos dados existentes, se fizer sentido
+            if (tgtLines.size() > 2) {
+                renumerarPaginas(tgtLines, 2, tgtLines.size() - 1);
+            }
+
+            // Devolve o novo rodapé
+            tgtLines.add(fixedFooterRow);
+            Files.write(tgtCsv, tgtLines, StandardCharsets.UTF_8);
+
+            // CÓPIA DA LAUDA (se quiser que o encerramento também tenha lauda associada)
+            Path srcLaudaDir = resolveLaudaDir(sourcePath);
+            Path tgtLaudaDir = resolveLaudaDir(targetPath);
+            if (!Files.exists(tgtLaudaDir)) {
+                Files.createDirectories(tgtLaudaDir);
+            }
+
+            Path srcTxt = srcLaudaDir.resolve(sourceRow + ".txt");
+            Path tgtTxt = tgtLaudaDir.resolve(sourceRow + ".txt");
+
+            if (Files.exists(srcTxt)) {
+                Files.copy(srcTxt, tgtTxt, StandardCopyOption.REPLACE_EXISTING);
+            } else {
+                Files.deleteIfExists(tgtTxt);
+            }
+
+            System.out.println("[COPY] Sucesso (ENCERRAMENTO). Linha " + sourceRow
+                    + " usada como novo rodapé no FINAL.");
+            return;
+        }
+
+        // 🔹 CASO NORMAL: NÃO É ENCERRAMENTO → COPIA COMO LINHA DE DADO
         // 🟢 PASSO B: PREENCHER VAZIOS (PADDING)
-        // O alvo é sourceRow + 1 (por causa do header 0)
         int targetListIndex = sourceRow + 1;
 
-        // Enquanto a lista (sem o rodapé) for menor que o índice alvo, enche de linhas vazias
         while (tgtLines.size() <= targetListIndex) {
-            String emptyLine = ";".repeat(Math.max(0, numCols - 1));
-            tgtLines.add(emptyLine);
+            tgtLines.add(criarLinhaVazia(numCols));
         }
 
         // 🟢 PASSO C: VERIFICAR LOCK E INSERIR
-        // Verifica se alguém está editando a linha onde vamos escrever
-        validarLinhaLivre(targetPath, sourceRow, user, tgtLines);
+        if (tgtLines.size() > targetListIndex) {
+            validarLinhaLivre(targetPath, sourceRow, user, tgtLines);
+        }
 
         // Sobrescreve a linha alvo com os dados novos
         tgtLines.set(targetListIndex, lineContentUpdated);
 
+        // Se for a última linha de dados, adiciona uma linha vazia extra
+        if (targetListIndex == tgtLines.size() - 1) {
+            tgtLines.add(criarLinhaVazia(numCols));
+        }
+
+        // Renumera páginas (Da linha 2 até o fim dos dados atuais)
+        if (tgtLines.size() > 2) {
+            renumerarPaginas(tgtLines, 2, tgtLines.size() - 1);
+        }
+
         // 🟢 PASSO D: DEVOLVER O RODAPÉ
-        // Adiciona a linha fixa no final de tudo
         tgtLines.add(fixedFooterRow);
 
         // Salva o Final
@@ -440,7 +587,8 @@ public class SheetService {
             Files.deleteIfExists(tgtTxt);
         }
 
-        System.out.println("[COPY] Sucesso. Linha " + sourceRow + " inserida. Rodapé empurrado para linha " + (tgtLines.size() - 1));
+        System.out.println("[COPY] Sucesso. Linha " + sourceRow
+                + " inserida em FINAL. Rodapé empurrado para linha " + (tgtLines.size() - 1));
     }
 
     // 👇 ADICIONE ESTE MÉTODO PRIVADO NA SUA CLASSE SheetService
@@ -461,4 +609,108 @@ public class SheetService {
         // 4. Usa o pathResolver para pegar o caminho completo dentro da pasta "laudas"
         return pathResolver.resolveSafe("laudas/" + folderName);
     }
+
+// -------------------------------------------------------------------------
+    // MÉTODOS AUXILIARES PARA MANIPULAÇÃO DE LAUDAS (.txt)
+    // -------------------------------------------------------------------------
+    /**
+     * Move os arquivos de texto em massa para acompanhar a inserção/exclusão.
+     */
+    private void shiftLaudaFiles(Path dir, int startIndex, int endIndex, int delta) {
+        if (dir == null || !Files.exists(dir)) {
+            return;
+        }
+
+        // Para INSERÇÃO (delta > 0): Movemos de trás para frente (Ex: 10->11, depois 9->10...)
+        // Isso evita sobrescrever um arquivo que ainda não foi movido.
+        if (delta > 0) {
+            for (int i = endIndex; i >= startIndex; i--) {
+                moveFileIndex(dir, i, i + delta);
+            }
+        } else if (delta < 0) {
+            for (int i = startIndex; i <= endIndex; i++) {
+                moveFileIndex(dir, i, i + delta);
+            }
+        }
+        // Para REMOÇÃO (delta < 0): Moveríamos da frente para trás (implementar se precisar no deleteRow)
+    }
+
+    /**
+     * Renomeia um arquivo específico baseando-se no índice da linha. Ex:
+     * Renomeia "5.txt" para "6.txt"
+     */
+    private void moveFileIndex(Path dir, int oldIndex, int newIndex) {
+        // Assume que o nome do arquivo é apenas o índice da linha (ex: 5.txt)
+        // Se sua lógica for (index-1), ajuste aqui.
+        String oldName = (oldIndex - 1) + ".txt";
+        String newName = (newIndex - 1) + ".txt";
+
+        Path source = dir.resolve(oldName);
+        Path target = dir.resolve(newName);
+
+        if (Files.exists(source)) {
+            try {
+                Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+                System.out.println("[LAUDA] Movido: " + oldName + " -> " + newName);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    // Método auxiliar para criar a linha vazia no CSV
+    private String criarLinhaVazia(int numCols) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < numCols; i++) {
+            if (i > 0) {
+                sb.append(';');
+            }
+            if (i == 0) {
+                sb.append("0"); // Num Pag provisório
+            } else if (i == 8 || i == 9 || i == 10) {
+                sb.append("00:00");
+            } else if (i == 13) {
+                sb.append("00:00:00");
+            } else {
+                sb.append("");
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Limpa as laudas associadas a um arquivo CSV específico.
+     *
+     * @param csvPath Caminho do CSV (ex: "/BDBR/Prelim.csv")
+     */
+    public void clearLaudas(String csvPath) {
+        try {
+            // 1. Usa o resolveLaudaDir para obter a pasta correta (ex: .../laudas/_BDBR_Prelim)
+            Path laudasDir = resolveLaudaDir(csvPath);
+
+            System.out.println("[SheetService] Tentando limpar laudas em: " + laudasDir);
+
+            if (Files.exists(laudasDir) && Files.isDirectory(laudasDir)) {
+                // 2. Lista e deleta os arquivos .txt
+                try (Stream<Path> files = Files.list(laudasDir)) {
+                    files.forEach(file -> {
+                        try {
+                            if (Files.isRegularFile(file) && file.toString().endsWith(".txt")) {
+                                Files.delete(file);
+                                System.out.println("[SheetService] Deletado: " + file.getFileName());
+                            }
+                        } catch (IOException e) {
+                            System.err.println("[SheetService] Falha ao deletar: " + file);
+                        }
+                    });
+                }
+            } else {
+                System.out.println("[SheetService] Pasta não existe (nada a apagar): " + laudasDir);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.err.println("[SheetService] Erro ao limpar laudas: " + e.getMessage());
+        }
+    }
+
 }

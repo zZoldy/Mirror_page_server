@@ -4,6 +4,7 @@
  */
 package com.app.mirrorpage.server.service;
 
+import com.app.mirrorpage.api.dto.SheetRestoredEvent;
 import com.app.mirrorpage.server.tabel.RowDeletedEvent;
 import com.app.mirrorpage.server.tabel.RowMoveEvent;
 import com.app.mirrorpage.server.tabel.SheetCellChangeEvent;
@@ -67,5 +68,19 @@ public class SheetEventBroadcaster {
     private String toTopic(String path) {
         // Mesmo esquema que você já usa (tirar barras, espaços etc.)
         return path.replace("\\", "/").replace("/", "_");
+    }
+
+    public void sendSheetRestored(String path, String user) {
+        String topic = "/topic/sheet/" + toTopic(path);
+
+        // Cria um payload anônimo ou um DTO específico
+        // Importante: "isRestore" ajuda o cliente a diferenciar de outros eventos
+        var event = new java.util.HashMap<String, Object>();
+        event.put("path", path);
+        event.put("user", user);
+        event.put("isRestore", true);
+
+        System.out.println("[WS] SheetRestoredEvent para " + topic);
+        messagingTemplate.convertAndSend(topic, event);
     }
 }

@@ -34,6 +34,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/admin/**").hasRole("SUPORTE") // admin exige role
                 .requestMatchers("/api/tree/**").authenticated() // precisa estar aqui
                 .requestMatchers("/api/me/**").authenticated()
+                .requestMatchers("/api/sheet/**").authenticated()
                 .anyRequest().authenticated() // demais precisam de token
         );
 

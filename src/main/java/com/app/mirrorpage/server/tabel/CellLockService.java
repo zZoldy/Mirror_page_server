@@ -172,4 +172,24 @@ public class CellLockService {
                     keysToRemove.size(), username);
         }
     }
+
+    public synchronized void releaseAllInRow(String path, int row) {
+        List<String> keysToRemove = new ArrayList<>();
+
+        locks.forEach((k, lock) -> {
+            if (lock.path.equals(path) && lock.row == row) {
+                keysToRemove.add(k);
+            }
+        });
+
+        keysToRemove.forEach(locks::remove);
+
+        if (!keysToRemove.isEmpty()) {
+            System.out.printf(
+                    "[LOCK SERVICE] releaseAllInRow path=%s row=%d count=%d%n",
+                    path, row, keysToRemove.size()
+            );
+        }
+    }
+
 }

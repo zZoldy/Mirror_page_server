@@ -4,6 +4,7 @@
  */
 package com.app.mirrorpage.server.web;
 
+import java.nio.file.AccessDeniedException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -55,5 +56,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGeneric(Exception ex) {
         return body(HttpStatus.INTERNAL_SERVER_ERROR, "Erro interno: " + ex.getMessage());
+    }
+    
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>> handleAccessDenied(AccessDeniedException ex) {
+        return body(HttpStatus.FORBIDDEN, "Acesso negado: Você não tem permissão para realizar esta ação.");
     }
 }
