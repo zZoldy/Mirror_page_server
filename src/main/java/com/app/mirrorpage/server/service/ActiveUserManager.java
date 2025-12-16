@@ -1,17 +1,17 @@
 package com.app.mirrorpage.server.service;
 
 import com.app.mirrorpage.server.tabel.CellLockService;
+import com.app.mirrorpage.server.tabel.SheetService;
 import org.springframework.stereotype.Service;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 @Service
 public class ActiveUserManager {
 
     // Injeção do serviço de Locks para poder limpar quando o usuário sair
     private final CellLockService lockService;
-    // Mapa Seguro: ID da Sessão -> Nome do Usuário
+
     private final Map<String, String> activeSessions = new ConcurrentHashMap<>();
 
     public ActiveUserManager(CellLockService lockService) {
@@ -24,10 +24,6 @@ public class ActiveUserManager {
         System.out.println("[AUTH] CONNECT: " + username);
     }
 
-    /**
-     * Remove a sessão e dispara a limpeza de locks. Chamado automaticamente
-     * quando a conexão cai.
-     */
     public void removeSession(String sessionId) {
         String username = activeSessions.remove(sessionId);
 
@@ -40,9 +36,6 @@ public class ActiveUserManager {
         }
     }
 
-    /**
-     * Retorna o nome do usuário dono de uma sessão específica.
-     */
     public String getUser(String sessionId) {
         return activeSessions.get(sessionId);
     }

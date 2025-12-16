@@ -5,6 +5,7 @@
 package com.app.mirrorpage.server.service;
 
 import com.app.mirrorpage.api.dto.SheetRestoredEvent;
+import com.app.mirrorpage.api.dto.StopwatchEvent;
 import com.app.mirrorpage.server.tabel.RowDeletedEvent;
 import com.app.mirrorpage.server.tabel.RowMoveEvent;
 import com.app.mirrorpage.server.tabel.SheetCellChangeEvent;
@@ -82,5 +83,18 @@ public class SheetEventBroadcaster {
 
         System.out.println("[WS] SheetRestoredEvent para " + topic);
         messagingTemplate.convertAndSend(topic, event);
+    }
+
+    // 👇 ADICIONE ESTE MÉTODO 👇
+    public void sendStopwatchEvent(StopwatchEvent ev) {
+        // Normaliza o path para criar o tópico (ex: /topic/sheet/_BDBR_Prelim.csv)
+        // Isso deve bater com a lógica do seu SheetSocketClient no Java
+        String topicId = toTopic(ev.getPath());
+
+        String destination = "/topic/sheet/" + topicId;
+
+        System.out.println("[BROADCAST] Cronômetro " + ev.getAction() + " para " + destination);
+
+        messagingTemplate.convertAndSend(destination, ev);
     }
 }

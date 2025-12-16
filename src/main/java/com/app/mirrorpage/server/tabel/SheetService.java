@@ -4,6 +4,7 @@
  */
 package com.app.mirrorpage.server.tabel;
 
+import com.app.mirrorpage.api.dto.StopwatchEvent;
 import com.app.mirrorpage.fs.PathResolver;
 import com.app.mirrorpage.server.service.SheetEventBroadcaster;
 import java.io.FileNotFoundException;
@@ -15,6 +16,8 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
@@ -25,6 +28,9 @@ public class SheetService {
     private final PathResolver pathResolver;
     private final SheetEventBroadcaster broadcaster;
     private final CellLockService cellLockService;
+
+    // 👇 ADICIONE ESTE MAPA PARA GUARDAR O ESTADO EM MEMÓRIA
+    private final Map<String, StopwatchEvent> stopwatchStates = new ConcurrentHashMap<>();
 
     public SheetService(PathResolver pathResolver,
             SheetEventBroadcaster broadcaster,
@@ -87,7 +93,7 @@ public class SheetService {
         linhas.add(novaLinhaIndex, novaLinha);
 
         int startModelRow = afterRow + 1;
-        
+
         // Ajusta Locks e Numeração
         cellLockService.shiftLocks(relPath, startModelRow, +1);
         renumerarPaginas(linhas, fixedDataIndex + 1, linhas.size() - 2);
@@ -96,7 +102,6 @@ public class SheetService {
         Files.write(file, linhas, StandardCharsets.UTF_8);
         broadcaster.sendRowInserted(new SheetRowInsertedEvent(relPath, afterRow, username));
     }
-    
 
     public void moveRow(String path, int from, int to, String username) throws Exception {
         Path abs = resolveSheet(path);
@@ -165,7 +170,6 @@ public class SheetService {
         // Se o próprio usuário que moveu tinha locks, eles seriam invalidados ou 
         // liberados pelo front ao soltar o mouse. É mais seguro não mexer no mapa de locks aqui.
         // Salva e notifica
-        
         Files.write(abs, mut, StandardCharsets.UTF_8);
         broadcaster.sendRowMoved(new RowMoveEvent(path, from, to, username));
     }
@@ -711,6 +715,50 @@ public class SheetService {
             e.printStackTrace();
             System.err.println("[SheetService] Erro ao limpar laudas: " + e.getMessage());
         }
+    }
+
+    public StopwatchEvent getStopwatchState(String path) {
+        StopwatchEvent stored = stopwatchStates.get(path);
+
+        if (stored == null) {
+            return null;
+        }
+
+        // Se o cronômetro está RODANDO (START), precisamos somar o tempo que passou desde o start até agora.
+        if ("START".equals(stored.getAction())) {
+            long now = System.currentTimeMillis();
+            long delta = now - stored.getTimestamp(); // Tempo decorrido no servidor
+
+            // Retorna um novo evento simulando que o cronômetro começou AGORA, 
+            // mas com o tempo acumulado ajustado.
+            return new StopwatchEvent(
+                    stored.getAction(),
+                    stored.getUser(),
+                    stored.getPath(),
+                    stored.getAccumulatedTime() + delta, // Soma o tempo que passou
+                    stored.isSync(),
+                    now // Timestamp atualizado
+            );
+        }
+
+        // Se está PAUSADO ou ZERADO, retorna como está
+        return stored;
+    }
+
+    public void handleStopwatchEvent(StopwatchEvent ev) {
+// 1. Força o timestamp do servidor para garantir consistência entre todos os clientes
+        ev.setTimestamp(System.currentTimeMillis());
+
+        // 2. Atualiza memória
+        if ("RESET".equals(ev.getAction()) || "NON_SYNC".equals(ev.getAction())) {
+            stopwatchStates.remove(ev.getPath());
+        } else {
+            // Salva START ou PAUSE com o timestamp do servidor
+            stopwatchStates.put(ev.getPath(), ev);
+        }
+
+        // 3. Broadcast (via WebSocket)
+        broadcaster.sendStopwatchEvent(ev);
     }
 
 }

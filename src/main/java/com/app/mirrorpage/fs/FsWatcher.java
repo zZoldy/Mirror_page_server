@@ -78,7 +78,7 @@ public class FsWatcher {
                     }
 
                     TreeChangeBus.publish(new TreeChangeBus.ChangeDto(type, relPath, null, parent, Files.isDirectory(changed)));
-                    System.out.println("[FS] " + type + " " + relPath);
+//                    System.out.println("[FS] " + type + " " + relPath);
                 }
                 key.reset();
             }

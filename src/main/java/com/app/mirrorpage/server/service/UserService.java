@@ -13,11 +13,14 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
-public class UserService {
+public class UserService implements UserDetailsService {
 
     private final UserRepository users;
     private final RoleRepository roles;
@@ -27,6 +30,13 @@ public class UserService {
         this.users = users;
         this.roles = roles;
         this.encoder = encoder;
+    }
+
+    // 🔴 MÉTODO OBRIGATÓRIO PARA O SPRING SECURITY E O INTERCEPTADOR
+    @Override
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        return users.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado: " + username));
     }
 
     /**

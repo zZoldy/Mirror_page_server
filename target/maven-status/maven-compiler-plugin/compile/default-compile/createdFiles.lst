@@ -2,9 +2,11 @@ com\app\mirrorpage\api\PingController.class
 com\app\mirrorpage\server\tabel\UnlockCellRequest.class
 com\app\mirrorpage\server\prefs\UserPreferenceRepository.class
 com\app\mirrorpage\server\service\ActiveUserManager.class
+com\app\mirrorpage\server\config\Log.class
 com\app\mirrorpage\api\TemaController.class
 com\app\mirrorpage\server\config\SecurityBeans$1.class
 com\app\mirrorpage\api\AuthController$AuthResponse.class
+com\app\mirrorpage\api\StopwatchController.class
 com\app\mirrorpage\server\tabel\SheetCellChangeEvent.class
 com\app\mirrorpage\server\web\admin\AdminUserController$UserResponse.class
 com\app\mirrorpage\server\config\SecurityConfig.class
@@ -33,6 +35,7 @@ com\app\mirrorpage\api\dto\TreeNodeDto.class
 com\app\mirrorpage\fs\PathResolver.class
 com\app\mirrorpage\server\config\AuthChannelInterceptor.class
 com\app\mirrorpage\api\dto\PromoteRequest.class
+com\app\mirrorpage\api\dto\StopwatchEvent.class
 com\app\mirrorpage\api\dto\MoveRowRequest.class
 com\app\mirrorpage\server\web\GlobalExceptionHandler.class
 com\app\mirrorpage\server\tabel\SheetRowInsertedEvent.class
