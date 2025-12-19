@@ -10,8 +10,9 @@ server:
       pattern: '%h %l %u %t "%r" %s %b %D'
     
 mirrorpage:
-  root: C:/mirrorpage/Produtos
-  #  root: /opt/mirrorpage/produtos
+  root: /opt/mirrorpage/produtos
+# root: C:/mirrorpage/Produtos
+
   jwt:
     secret: "0123456789ZOLDYCKILLYUA9876543210"  # use algo forte!
     access-minutes: 60
@@ -19,8 +20,9 @@ mirrorpage:
 
 app:
   log:
-    path: "C:/mirrorpage/Conf/ServerLogs.txt"
-    #  root: /opt/mirrorpage/conf/produtos
+     root: /opt/mirrorpage/conf/produtosF
+#    path: "C:/mirrorpage/Conf/ServerLogs.txt"
+
 
 spring:
   datasource:
