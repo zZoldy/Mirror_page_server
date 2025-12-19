@@ -5,6 +5,7 @@ import com.app.mirrorpage.server.domain.user.User;
 import com.app.mirrorpage.server.repo.UserRepository;
 import com.app.mirrorpage.server.security.JwtService;
 import com.app.mirrorpage.server.service.ActiveUserManager;
+import com.app.mirrorpage.server.service.ServerLog;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
@@ -39,24 +40,39 @@ public class AuthController {
     private final PasswordEncoder encoder;
     private final JwtService jwt;
     private final ActiveUserManager activeUserManager;
+    private final ServerLog serverLog;
 
-    public AuthController(UserRepository users, PasswordEncoder encoder, JwtService jwt, ActiveUserManager activeUserManager) {
+    public AuthController(UserRepository users, PasswordEncoder encoder, JwtService jwt, ActiveUserManager activeUserManager, ServerLog serverLog) {
         this.users = users;
         this.encoder = encoder;
         this.jwt = jwt;
         this.activeUserManager = activeUserManager;
+        this.serverLog = serverLog;
     }
 
-    @PostMapping("/login")
-    @ResponseStatus(HttpStatus.OK)
-    public AuthResponse login(@RequestBody LoginRequest req) {
+@PostMapping("/login")
+    // @ResponseStatus(HttpStatus.OK) <--- REMOVA (O ResponseEntity já controla o status)
+    
+    // 1. MUDANÇA: Retorno deve ser ResponseEntity<?> para aceitar Erro ou Sucesso
+    public ResponseEntity<?> login(@RequestBody LoginRequest req) {
 
-// 1. Lógica de Bloqueio (Lançando Exceção)
+        // --- Lógica de Bloqueio (409 CONFLICT) ---
         if (activeUserManager.isUserConnected(req.username())) {
-            // Isso vai gerar o erro 409 e parar a execução aqui
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Este usuário já está conectado em outra sessão.");
+            
+            // 2. LOG SEM SUJEIRA: 
+            // Usamos WARN para não gerar stack trace no servidor, mas aparecer no cliente.
+            // Não precisa criar 'new ResponseStatusException' se não vai dar throw.
+            serverLog.warn("AuthController", "Login bloqueado: " + req.username() + " já possui sessão ativa.");
+            
+            // 3. RETORNO CONTROLADO:
+            // Retorna um JSON simples com a mensagem de erro
+            return ResponseEntity
+                    .status(HttpStatus.CONFLICT)
+                    .body(java.util.Map.of("message", "Este usuário já está conectado em outra sessão."));
         }
+        // ----------------------------------------
 
+        // Lógica de Autenticação
         User u = users.findByUsername(req.username())
                 .orElseThrow(() -> new IllegalArgumentException("Usuário ou senha inválidos"));
 
@@ -64,11 +80,20 @@ public class AuthController {
             throw new IllegalArgumentException("Usuário ou senha inválidos");
         }
 
+        // Geração dos Tokens
         String access = jwt.generateAccessToken(u);
         String refresh = jwt.generateRefreshToken(u);
         List<String> roles = u.getRoles().stream().map(Role::getName).toList();
 
-        return new AuthResponse(access, refresh, roles);
+        // 4. CRIAÇÃO DO DTO (Com o username novo)
+        AuthResponse response = new AuthResponse(
+                access, 
+                refresh, 
+                roles
+        );
+
+        // 5. ENCAPSULA O SUCESSO
+        return ResponseEntity.ok(response);
     }
 
     // ... (Método refresh permanece igual) ...

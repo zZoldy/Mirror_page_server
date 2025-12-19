@@ -1,7 +1,6 @@
 package com.app.mirrorpage.server.service;
 
 import com.app.mirrorpage.server.tabel.CellLockService;
-import com.app.mirrorpage.server.tabel.SheetService;
 import org.springframework.stereotype.Service;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -14,22 +13,24 @@ public class ActiveUserManager {
 
     private final Map<String, String> activeSessions = new ConcurrentHashMap<>();
 
-    public ActiveUserManager(CellLockService lockService) {
+    private final ServerLog serverLog;
+
+    public ActiveUserManager(CellLockService lockService, ServerLog serverLog) {
         this.lockService = lockService;
+        this.serverLog = serverLog;
     }
 
     public void addSession(String sessionId, String username) {
         // Se chegou aqui, o Interceptor já garantiu que não é duplicado.
         activeSessions.put(sessionId, username);
-        System.out.println("[AUTH] CONNECT: " + username);
+        serverLog.info("[AUTH]", "Usuário logado: " + username);
     }
 
     public void removeSession(String sessionId) {
         String username = activeSessions.remove(sessionId);
 
         if (username != null) {
-            System.out.println("[AUTH] DISCONNECT: O usuário '" + username + "' saiu.");
-
+            serverLog.info("[AUTH]", "Usuário deslogado: " + username);
             // 🔴 AQUI É O PULO DO GATO:
             // "Ei LockService, o fulano saiu. Solte tudo que ele estava segurando!"
             lockService.releaseAllLocksByUser(username);

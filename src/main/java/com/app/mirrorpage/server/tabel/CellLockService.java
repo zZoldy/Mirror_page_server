@@ -4,8 +4,11 @@
  */
 package com.app.mirrorpage.server.tabel;
 
+import com.app.mirrorpage.server.service.ServerLog;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -18,8 +21,16 @@ public class CellLockService {
     // Mapa em memória: chave -> lock
     private final Map<String, CellLock> locks = new ConcurrentHashMap<>();
 
+    private final ServerLog serverLog;
     // TTL do lock (ex: 2 minutos)
     private static final Duration TTL = Duration.ofMinutes(2);
+
+    private static final DateTimeFormatter LOCAL_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss")
+            .withZone(ZoneId.of("America/Sao_Paulo"));
+
+    public CellLockService(ServerLog serverLog) {
+        this.serverLog = serverLog;
+    }
 
     private String key(String path, int row, int col) {
         // 🔴 MUITO IMPORTANTE: usar SEMPRE o mesmo path que vem do controller
@@ -53,8 +64,8 @@ public class CellLockService {
         CellLock lock = new CellLock(path, row, col, owner, now.plus(TTL));
         locks.put(k, lock);
 
-        System.out.printf("[LOCK SERVICE] acquire OK key=%s owner=%s expires=%s%n",
-                k, owner, lock.expiresAt);
+        String expiraEmLocal = LOCAL_FMT.format(lock.expiresAt);
+        serverLog.warn("[LOCK SERVICE]", "LOCK Concedido: " + k + " - Pelo usuário: " + owner + " - Expira em: " + expiraEmLocal);
 
         return lock;
     }
@@ -76,15 +87,12 @@ public class CellLockService {
         String k = key(path, row, col);
         CellLock lock = locks.get(k);
         if (lock == null) {
-            System.out.printf("[LOCK SERVICE] getOwner key=%s -> null%n", k);
             return null;
         }
         if (lock.expiresAt.isBefore(Instant.now())) {
             locks.remove(k);
-            System.out.printf("[LOCK SERVICE] getOwner key=%s -> expirado%n", k);
             return null;
         }
-        System.out.printf("[LOCK SERVICE] getOwner key=%s -> %s%n", k, lock.owner);
         return lock.owner;
     }
 
@@ -92,16 +100,14 @@ public class CellLockService {
         String k = key(path, row, col);
         CellLock lock = locks.get(k);
         if (lock == null) {
-            System.out.printf("[LOCK SERVICE] release key=%s -> já não existe%n", k);
             return;
         }
         if (!lock.owner.equals(user)) {
-            System.out.printf("[LOCK SERVICE] release key=%s negado. owner=%s user=%s%n",
-                    k, lock.owner, user);
             return;
         }
         locks.remove(k);
-        System.out.printf("[LOCK SERVICE] release OK key=%s owner=%s%n", k, user);
+
+        serverLog.warn("[LOCK SERVICE]", "LOCK Release: " + k + " - Pelo usuário: " + user + " - Expira em: " + lock.expiresAt);
     }
 
     /**
@@ -136,7 +142,8 @@ public class CellLockService {
             CellLock newLock = new CellLock(oldLock.path, newRow, oldLock.col, oldLock.owner, oldLock.expiresAt);
             locks.put(newKey, newLock);
 
-            System.out.println("[LOCK SERVICE] Shift: Lock movido Row " + oldLock.row + " -> " + newRow);
+            serverLog.warn("[LOCK SERVICE]", "Lock Movido da linha: " + oldLock.row + " para linha: " + newRow);
+
         }
     }
 
@@ -168,8 +175,7 @@ public class CellLockService {
         if (!keysToRemove.isEmpty()) {
             keysToRemove.forEach(locks::remove);
 
-            System.out.printf("[LOCK SERVICE] Auto-Release: Liberados %d locks do usuário '%s' por desconexão.%n",
-                    keysToRemove.size(), username);
+            serverLog.warn("[LOCK SERVICE]", "Auto-Release: Liberados: " + keysToRemove.size() + " locks do usuário: " + username + " por desconexão");
         }
     }
 
@@ -185,10 +191,7 @@ public class CellLockService {
         keysToRemove.forEach(locks::remove);
 
         if (!keysToRemove.isEmpty()) {
-            System.out.printf(
-                    "[LOCK SERVICE] releaseAllInRow path=%s row=%d count=%d%n",
-                    path, row, keysToRemove.size()
-            );
+            serverLog.warn("[LOCK SERVICE]", "releaseAllInRow: " + path + " - Linha: " + row + " - Quantidade: " + keysToRemove.size());
         }
     }
 

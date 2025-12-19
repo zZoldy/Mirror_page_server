@@ -5,6 +5,7 @@ import com.app.mirrorpage.api.dto.MoveRowRequest;
 import com.app.mirrorpage.api.dto.PromoteRequest;
 import com.app.mirrorpage.fs.PathResolver;
 import com.app.mirrorpage.server.domain.user.User; // 1. Importe sua entidade User
+import com.app.mirrorpage.server.service.ServerLog;
 import com.app.mirrorpage.server.service.SheetEventBroadcaster;
 import com.app.mirrorpage.server.tabel.CellLock;
 import com.app.mirrorpage.server.tabel.CellLockRequest;
@@ -37,14 +38,17 @@ public class SheetController {
     private final CellLockService lockService;
     private final SheetService sheetService;
     private final SheetEventBroadcaster sheetEventBroadcaster;
+    private final ServerLog serverLog;
 
     public SheetController(CellLockService lockService,
             PathResolver resolver, SheetService sheetService,
-            SheetEventBroadcaster sheetEventBroadcaster) {
+            SheetEventBroadcaster sheetEventBroadcaster,
+            ServerLog serverLog) {
         this.lockService = lockService;
         this.resolver = resolver;
         this.sheetService = sheetService;
         this.sheetEventBroadcaster = sheetEventBroadcaster;
+        this.serverLog = serverLog;
     }
 
     // --- LOCK ---
@@ -61,8 +65,7 @@ public class SheetController {
         if (lock == null) {
             String owner = lockService.getOwner(req.path(), req.row(), req.col());
 
-            System.out.printf("[LOCK] RECUSADO path=%s row=%d col=%d ownerAtual=%s requisitante=%s%n",
-                    req.path(), req.row(), req.col(), owner, username);
+            serverLog.warn("SheetControoler", "[LOCK] RECUSADO Origem: " + req.path() + " - Linha: " + req.row() + " - Coluna: " + req.col() + " - Dono do Lock: " + owner + " - Usuário Barrado: " + username);
 
             record LockConflictResponse(String message, String owner) {
 
@@ -87,12 +90,12 @@ public class SheetController {
 
         // Verifica se é dono
         if (!lockService.isOwner(req.path(), req.row(), req.col(), username)) {
-            System.out.printf("[LOCK UNLOCK] NEGADO (Not owner) user=%s%n", username);
+            serverLog.warn("SheetControoler", "[LOCK] UNLOCK-NEGADO: " + req.path() + " - Linha: " + req.row() + " - Coluna: " + req.col() + " - Usuário: " + username);
             return ResponseEntity.status(403).body("Not lock owner");
         }
 
         lockService.release(req.path(), req.row(), req.col(), username);
-        System.out.printf("[LOCK UNLOCK] OK user=%s%n", username);
+        serverLog.warn("SheetController", "[LOCK] UNLOCK-DESBLOQUEADO Origem: " + req.path() + " - Linha: " + req.row() + " - Coluna: " + req.col() + " - Pelo Usuário: " + username);
 
         return ResponseEntity.ok().build();
     }
@@ -109,9 +112,6 @@ public class SheetController {
 
         int modelRow = req.row();
         int col = req.col();
-
-        System.out.printf("[SAVE-CELL] path=%s row=%d col=%d user=%s val='%s'%n",
-                req.path(), modelRow, col, username, req.value());
 
         try {
             Path filePath = resolver.resolveSafe(req.path());
@@ -154,10 +154,11 @@ public class SheetController {
             );
             sheetEventBroadcaster.sendCellChange(evt);
 
+            serverLog.warn("SheetControoler", "[SAVE-CELL] Origem: " + req.path() + " - Linha: " + modelRow + " - Coluna: " + col + " - Usuário: " + username);
             return ResponseEntity.ok().build();
 
         } catch (Exception ex) {
-            ex.printStackTrace();
+            serverLog.error("SheetController", "Erro ao salvar céluar", ex);
             return ResponseEntity.internalServerError().body("Erro ao salvar célula");
         }
     }
@@ -178,7 +179,9 @@ public class SheetController {
             @AuthenticationPrincipal User user) throws IOException {
 
         String username = (user != null) ? user.getUsername() : "unknown";
+
         sheetService.insertRow(path, afterRow, username);
+        serverLog.warn("SheetControoler", "[rowInsert] Origem: " + path + " - Linha inserida: " + afterRow + " - Usuário: " + username);
         return ResponseEntity.noContent().build();
     }
 
@@ -187,12 +190,15 @@ public class SheetController {
         try {
             // Preferência: usar o usuário do token, se disponível
             String username = (user != null) ? user.getUsername() : req.user();
+
             sheetService.moveRow(req.path(), req.from(), req.to(), username);
+            serverLog.warn("SheetControoler", "[moveRow] Origem: " + req.path() + " - Linha Atual: " + req.from() + " - Linha enviada para: " + req.to() + " - Usuário: " + username);
             return ResponseEntity.ok().build();
         } catch (IllegalStateException e) {
+            serverLog.error("SheetController", "[moveRow] Erro ao mover linha - >", e);
             return ResponseEntity.status(409).body(e.getMessage());
         } catch (Exception e) {
-            e.printStackTrace();
+            serverLog.error("SheetController", "[moveRow] Erro ao mover linha - >", e);
             return ResponseEntity.internalServerError().build();
         }
     }
@@ -201,14 +207,18 @@ public class SheetController {
     public ResponseEntity<?> deleteRow(@RequestBody DeleteRowRequest req, @AuthenticationPrincipal User user) {
         try {
             String username = (user != null) ? user.getUsername() : req.user();
+
             sheetService.deleteRow(req.path(), req.row(), username);
+            serverLog.warn("SheetControoler", "[deleteRow] Origem: " + req.path() + " - Linha deletada: " + req.row() + " - Usuário: " + username);
             return ResponseEntity.ok().build();
         } catch (IllegalStateException e) {
+            serverLog.error("SheetController", "[deleteRow] Erro ao deletar linha - >", e);
             return ResponseEntity.status(409).body(e.getMessage());
         } catch (IllegalArgumentException e) {
+            serverLog.error("SheetController", "[deleteRow] Erro ao deletar linha - >", e);
             return ResponseEntity.badRequest().body(e.getMessage());
         } catch (Exception e) {
-            e.printStackTrace();
+            serverLog.error("SheetController", "[deleteRow] Erro ao deletar linha - >", e);
             return ResponseEntity.internalServerError().build();
         }
     }
@@ -242,18 +252,21 @@ public class SheetController {
             SheetRowInsertedEvent eventoPrelim = new SheetRowInsertedEvent(req.sourcePath(), req.sourceRow(), user.getUsername());
             sheetEventBroadcaster.sendRowInserted(eventoPrelim);
 
+            serverLog.warn("SheetControoler", "[copy-to-final] Origem: " + req.sourcePath() + " - Destino " + req.targetPath() + " - Na linha: " + req.sourceRow() + " - Usuário: " + user.getUsername());
             return ResponseEntity.ok().build();
 
         } catch (IllegalStateException e) {
             // 🛑 AQUI É O PULO DO GATO:
             // Captura o erro "Linha bloqueada por fulano" e manda como 409 Conflict
+            serverLog.error("SheetController", "[copy-to-row] Erro ao enviar linha - >", e);
             return ResponseEntity.status(409).body(e.getMessage());
 
         } catch (IllegalArgumentException e) {
+            serverLog.error("SheetController", "[copy-to-row] Erro ao enviar linha - >", e);
             return ResponseEntity.badRequest().body("Linha não encontrada ou inválida.");
 
         } catch (Exception e) {
-            e.printStackTrace();
+            serverLog.error("SheetController", "[copy-to-row] Erro ao enviar linha - >", e);
             return ResponseEntity.internalServerError().body("Erro interno: " + e.getMessage());
         }
     }
@@ -267,8 +280,6 @@ public class SheetController {
             return ResponseEntity.badRequest().build();
         }
 
-        System.out.printf("[API] Planilha restaurada: path=%s user=%s%n", path, user);
-
         // --- [NOVO] Limpeza automática das Laudas ---
         // Chama o serviço para apagar a pasta 'laudas'
         sheetService.clearLaudas(path);
@@ -277,6 +288,7 @@ public class SheetController {
         // Dispara o evento para todos os clientes conectados
         sheetEventBroadcaster.sendSheetRestored(path, user);
 
+        serverLog.warn("SheetControoler", "[notify-restory] Origem: " + path + " - Restaurada/Criada pelo Usuário: " + user);
         return ResponseEntity.ok().build();
     }
 }

@@ -11,6 +11,7 @@ public class FileLockService {
 
     // 1. Classe interna para guardar Dono + Validade
     private static class FileLockInfo {
+
         final String owner;
         final Instant expiresAt;
 
@@ -26,9 +27,14 @@ public class FileLockService {
     // Tempo de vida do lock (2 minutos)
     private static final Duration TTL = Duration.ofMinutes(2);
 
+    private final ServerLog serverLog;
+
+    public FileLockService(ServerLog serverLog) {
+        this.serverLog = serverLog;
+    }
+
     /**
-     * Tenta aplicar o lock. 
-     * Retorna TRUE se conseguiu.
+     * Tenta aplicar o lock. Retorna TRUE se conseguiu.
      */
     public synchronized boolean tryLock(String path, String user) {
         Instant now = Instant.now();
@@ -39,17 +45,16 @@ public class FileLockService {
             // Se expirou -> Remove e deixa pegar
             if (existing.expiresAt.isBefore(now)) {
                 locks.remove(path);
-            } 
-            // Se NÃO expirou e é de OUTRO usuário -> Bloqueia
+            } // Se NÃO expirou e é de OUTRO usuário -> Bloqueia
             else if (!existing.owner.equals(user)) {
-                return false; 
+                return false;
             }
         }
 
         // Cria ou Renova o lock
         locks.put(path, new FileLockInfo(user, now.plus(TTL)));
-        
-        System.out.println("[FILE LOCK] Lock concedido/renovado para " + user + " em " + path);
+
+        serverLog.warn("[FILE LOCK]", "Lock concedido/renovado para " + user + " em " + path);
         return true;
     }
 
@@ -61,7 +66,7 @@ public class FileLockService {
         // Só remove se existir e for do usuário solicitante
         if (lock != null && lock.owner.equals(user)) {
             locks.remove(path);
-            System.out.println("[FILE LOCK] Lock liberado por " + user + " em " + path);
+            serverLog.warn("[FILE LOCK]", "Lock liberado por " + user + " em " + path);
         }
     }
 
@@ -70,8 +75,10 @@ public class FileLockService {
      */
     public String getOwner(String path) {
         FileLockInfo lock = locks.get(path);
-        if (lock == null) return null;
-        
+        if (lock == null) {
+            return null;
+        }
+
         // Se expirou, limpa e retorna null
         if (lock.expiresAt.isBefore(Instant.now())) {
             locks.remove(path);
@@ -81,19 +88,21 @@ public class FileLockService {
     }
 
     /**
-     * Verifica se o usuário é o dono legítimo do lock atual.
-     * Usado pelo endpoint de notificação (CTRL+S).
+     * Verifica se o usuário é o dono legítimo do lock atual. Usado pelo
+     * endpoint de notificação (CTRL+S).
      */
     public boolean isOwner(String path, String user) {
         FileLockInfo lock = locks.get(path);
-        
-        if (lock == null) return false;
-        
+
+        if (lock == null) {
+            return false;
+        }
+
         if (lock.expiresAt.isBefore(Instant.now())) {
             locks.remove(path);
             return false;
         }
-        
+
         return lock.owner.equals(user);
     }
 }

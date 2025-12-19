@@ -6,6 +6,7 @@ package com.app.mirrorpage.server.tabel;
 
 import com.app.mirrorpage.api.dto.StopwatchEvent;
 import com.app.mirrorpage.fs.PathResolver;
+import com.app.mirrorpage.server.service.ServerLog;
 import com.app.mirrorpage.server.service.SheetEventBroadcaster;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -28,16 +29,19 @@ public class SheetService {
     private final PathResolver pathResolver;
     private final SheetEventBroadcaster broadcaster;
     private final CellLockService cellLockService;
+    private final ServerLog serverLog;
 
     // 👇 ADICIONE ESTE MAPA PARA GUARDAR O ESTADO EM MEMÓRIA
     private final Map<String, StopwatchEvent> stopwatchStates = new ConcurrentHashMap<>();
 
     public SheetService(PathResolver pathResolver,
             SheetEventBroadcaster broadcaster,
-            CellLockService cellLockService) {
+            CellLockService cellLockService,
+            ServerLog serverLog) {
         this.pathResolver = pathResolver;
         this.broadcaster = broadcaster;
         this.cellLockService = cellLockService;
+        this.serverLog = serverLog;
     }
 
     public String loadSheet(String relPath) throws IOException {
@@ -240,15 +244,13 @@ public class SheetService {
             Path targetFile = dir.resolve(toName);
             if (sourceExists) {
                 Files.move(tempFile, targetFile, StandardCopyOption.REPLACE_EXISTING);
-                System.out.println("[SERVER] Lauda movida de " + fromName + " para " + toName);
             } else {
                 // Se a linha de origem não tinha lauda, garante que o destino fique vazio
                 Files.deleteIfExists(targetFile);
             }
 
         } catch (IOException e) {
-            e.printStackTrace();
-            System.err.println("[SERVER] Erro ao mover lauda: " + e.getMessage());
+            serverLog.error("[SheetService]", "moveLaudaFile - Erro ao mover lauda", e);
         }
     }
 
@@ -317,7 +319,7 @@ public class SheetService {
         // Se sua lógica mudou, ajuste aqui. Vou manter (index - 1) + ".txt"
         String nomeArquivoParaDeletar = (fileIndex - 1) + ".txt";
         Files.deleteIfExists(laudaDir.resolve(nomeArquivoParaDeletar));
-        System.out.println("[SERVER] Lauda deletada: " + nomeArquivoParaDeletar);
+        serverLog.warn("[SheetService", "Lauda deletada: " + nomeArquivoParaDeletar);
 
         // B. Puxa os arquivos subsequentes para CIMA (delta = -1)
         // Intervalo: da linha seguinte (fileIndex + 1) até a última linha de dados
@@ -352,23 +354,13 @@ public class SheetService {
         // Resolve o caminho
         Path dirProdutos = pathResolver.resolveSafe("");
 
-        // --- LOGS DE RASTREAMENTO ---
-        System.out.println("========================================");
-        System.out.println("[SERVER DEBUG] 1. Tentando ler pastas em:");
-        System.out.println("   -> " + dirProdutos.toAbsolutePath());
-        System.out.println("[SERVER DEBUG] 2. A pasta existe? " + Files.exists(dirProdutos));
-        System.out.println("[SERVER DEBUG] 3. É um diretório? " + Files.isDirectory(dirProdutos));
-
         if (Files.exists(dirProdutos)) {
             try {
-                System.out.println("[SERVER DEBUG] 4. Conteúdo encontrado:");
-                Files.list(dirProdutos).forEach(p -> System.out.println("   - " + p.getFileName()));
+                Files.list(dirProdutos).forEach(p -> p.getFileName());
             } catch (IOException e) {
-                System.out.println("   (Erro ao listar conteúdo)");
+
             }
         }
-        System.out.println("========================================");
-        // -----------------------------
 
         if (!Files.exists(dirProdutos) || !Files.isDirectory(dirProdutos)) {
             return Collections.emptyList();
@@ -537,9 +529,6 @@ public class SheetService {
             } else {
                 Files.deleteIfExists(tgtTxt);
             }
-
-            System.out.println("[COPY] Sucesso (ENCERRAMENTO). Linha " + sourceRow
-                    + " usada como novo rodapé no FINAL.");
             return;
         }
 
@@ -590,9 +579,6 @@ public class SheetService {
         } else {
             Files.deleteIfExists(tgtTxt);
         }
-
-        System.out.println("[COPY] Sucesso. Linha " + sourceRow
-                + " inserida em FINAL. Rodapé empurrado para linha " + (tgtLines.size() - 1));
     }
 
     // 👇 ADICIONE ESTE MÉTODO PRIVADO NA SUA CLASSE SheetService
@@ -655,9 +641,9 @@ public class SheetService {
         if (Files.exists(source)) {
             try {
                 Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
-                System.out.println("[LAUDA] Movido: " + oldName + " -> " + newName);
+                serverLog.warn("[SheetService]", "[LAUDA] Movida da linha: " + oldName + " para linha: " + newName);
             } catch (IOException e) {
-                e.printStackTrace();
+                serverLog.error("[SheetService]", "[LAUDA] Erro ao mover", e);
             }
         }
     }
@@ -692,8 +678,6 @@ public class SheetService {
             // 1. Usa o resolveLaudaDir para obter a pasta correta (ex: .../laudas/_BDBR_Prelim)
             Path laudasDir = resolveLaudaDir(csvPath);
 
-            System.out.println("[SheetService] Tentando limpar laudas em: " + laudasDir);
-
             if (Files.exists(laudasDir) && Files.isDirectory(laudasDir)) {
                 // 2. Lista e deleta os arquivos .txt
                 try (Stream<Path> files = Files.list(laudasDir)) {
@@ -701,19 +685,17 @@ public class SheetService {
                         try {
                             if (Files.isRegularFile(file) && file.toString().endsWith(".txt")) {
                                 Files.delete(file);
-                                System.out.println("[SheetService] Deletado: " + file.getFileName());
+                                serverLog.warn("[SheetService]", "[LAUDA] Deletada: " + file.getFileName());
                             }
                         } catch (IOException e) {
-                            System.err.println("[SheetService] Falha ao deletar: " + file);
+                            serverLog.error("[SheetService]", "[LAUDA] Falha ao deletar: " + file, e);
                         }
                     });
                 }
-            } else {
-                System.out.println("[SheetService] Pasta não existe (nada a apagar): " + laudasDir);
             }
         } catch (Exception e) {
-            e.printStackTrace();
-            System.err.println("[SheetService] Erro ao limpar laudas: " + e.getMessage());
+            serverLog.error("[SheetService]", "[LAUDA] Erro ao limpar laudas ", e);
+
         }
     }
 

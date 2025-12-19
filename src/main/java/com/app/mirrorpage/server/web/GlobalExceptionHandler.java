@@ -4,6 +4,7 @@
  */
 package com.app.mirrorpage.server.web;
 
+import com.app.mirrorpage.server.service.ServerLog;
 import java.nio.file.AccessDeniedException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -17,6 +18,12 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private final ServerLog serverLog; // Injetamos o log aqui
+
+    public GlobalExceptionHandler(ServerLog serverLog) {
+        this.serverLog = serverLog;
+    }
 
     private ResponseEntity<Map<String, Object>> body(HttpStatus status, String message) {
         return ResponseEntity
@@ -49,17 +56,20 @@ public class GlobalExceptionHandler {
     // Violação de UNIQUE/FOREIGN KEY -> 409 Conflict
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<Map<String, Object>> handleIntegrity(DataIntegrityViolationException ex) {
+        serverLog.error("GlobalExceptionHandler", "Violação de integridade: " + ex.getMessage(), ex);
         return body(HttpStatus.CONFLICT, "Violação de integridade: " + ex.getMostSpecificCause().getMessage());
     }
 
     // Fallback
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGeneric(Exception ex) {
+        serverLog.error("GlobalExceptionHandler", "Erro Interno Não Tratado: " + ex.getMessage(), ex);
         return body(HttpStatus.INTERNAL_SERVER_ERROR, "Erro interno: " + ex.getMessage());
     }
-    
+
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<Map<String, Object>> handleAccessDenied(AccessDeniedException ex) {
+        serverLog.warn("GlobalExceptionHandler", "Acesso negado: Você não tem permissão para realizar esta ação." + ex.getMessage());
         return body(HttpStatus.FORBIDDEN, "Acesso negado: Você não tem permissão para realizar esta ação.");
     }
 }

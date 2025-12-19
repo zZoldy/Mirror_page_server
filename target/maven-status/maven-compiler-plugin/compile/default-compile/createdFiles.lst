@@ -2,7 +2,6 @@ com\app\mirrorpage\api\PingController.class
 com\app\mirrorpage\server\tabel\UnlockCellRequest.class
 com\app\mirrorpage\server\prefs\UserPreferenceRepository.class
 com\app\mirrorpage\server\service\ActiveUserManager.class
-com\app\mirrorpage\server\config\Log.class
 com\app\mirrorpage\api\TemaController.class
 com\app\mirrorpage\server\config\SecurityBeans$1.class
 com\app\mirrorpage\api\AuthController$AuthResponse.class
@@ -18,6 +17,7 @@ com\app\mirrorpage\api\dto\RowInsertRequest.class
 com\app\mirrorpage\server\prefs\UserPrefId.class
 com\app\mirrorpage\server\tabel\CellSaveRequest.class
 com\app\mirrorpage\server\domain\user\Role.class
+com\app\mirrorpage\server\service\ServerLog.class
 com\app\mirrorpage\server\user\UserAccountService.class
 com\app\mirrorpage\api\TreeController.class
 com\app\mirrorpage\server\tabel\CellLock.class
@@ -33,6 +33,7 @@ com\app\mirrorpage\fs\TreeChangeBus$ChangeBatchDto.class
 com\app\mirrorpage\server\config\WebSocketConfig.class
 com\app\mirrorpage\api\dto\TreeNodeDto.class
 com\app\mirrorpage\fs\PathResolver.class
+com\app\mirrorpage\api\LogController.class
 com\app\mirrorpage\server\config\AuthChannelInterceptor.class
 com\app\mirrorpage\api\dto\PromoteRequest.class
 com\app\mirrorpage\api\dto\StopwatchEvent.class
@@ -62,6 +63,7 @@ com\app\mirrorpage\api\dto\DeleteRowRequest.class
 com\app\mirrorpage\api\FileLockController.class
 com\app\mirrorpage\server\web\admin\AdminUserController$CreateUserRequest.class
 com\app\mirrorpage\api\AuthController$LoginRequest.class
+com\app\mirrorpage\api\dto\LogDto.class
 com\app\mirrorpage\server\tree\TreeEventBroadcaster.class
 com\app\mirrorpage\api\ValorDto.class
 com\app\mirrorpage\fs\TreeService.class

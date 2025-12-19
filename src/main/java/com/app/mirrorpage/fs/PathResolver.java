@@ -4,6 +4,9 @@
  */
 package com.app.mirrorpage.fs;
 
+import com.app.mirrorpage.server.service.ServerLog;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
@@ -14,9 +17,23 @@ import org.springframework.stereotype.Component;
 public class PathResolver {
 
     private final Path root;
+    private final ServerLog serverLog;
 
-    public PathResolver(@Value("${mirrorpage.root}") String rootDir) {
+    public PathResolver(@Value("${mirrorpage.root}") String rootDir, ServerLog serverLog) {
         this.root = Paths.get(rootDir).toAbsolutePath().normalize();
+        this.serverLog = serverLog;
+
+        // --- CRIAÇÃO AUTOMÁTICA DA PASTA 'PRODUTOS' ---
+        try {
+            if (!Files.exists(this.root)) {
+                Files.createDirectories(this.root); // Cria Produtos e mirrorpage se não existirem
+                serverLog.info("[PathReolver]", "Pasta raiz criada com sucesso em: " + this.root);
+            }
+        } catch (IOException e) {
+            // Se não der pra criar a pasta raiz, o servidor nem deve subir
+            serverLog.error("PathReolver", "ERRO CRÍTICO: Não foi possível criar o diretório raiz: " + rootDir, e);
+            throw new RuntimeException("ERRO CRÍTICO: Não foi possível criar o diretório raiz: " + rootDir, e);
+        }
     }
 
     public Path getRoot() {

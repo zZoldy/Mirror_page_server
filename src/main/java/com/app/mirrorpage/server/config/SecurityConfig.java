@@ -35,6 +35,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/tree/**").authenticated() // precisa estar aqui
                 .requestMatchers("/api/me/**").authenticated()
                 .requestMatchers("/api/sheet/**").authenticated()
+                .requestMatchers("/api/logs/**").authenticated()
                 .anyRequest().authenticated() // demais precisam de token
         );
 

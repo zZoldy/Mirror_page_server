@@ -1,6 +1,7 @@
 package com.app.mirrorpage.server.tree;
 
 import com.app.mirrorpage.fs.PathResolver;
+import com.app.mirrorpage.server.service.ServerLog;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Service;
 
@@ -12,13 +13,13 @@ public class FolderWatcher implements InitializingBean {
     private final Path ROOT_FS;
     private final WatchService watchService;
     private final TreeEventBroadcaster broadcaster;
+    private final ServerLog serverLog;
 
-    public FolderWatcher(TreeEventBroadcaster broadcaster, PathResolver resolver) throws java.io.IOException {
+    public FolderWatcher(TreeEventBroadcaster broadcaster, PathResolver resolver, ServerLog serverLog) throws java.io.IOException {
         this.ROOT_FS = resolver.getRoot().normalize();   // vem do application.yml
         this.watchService = FileSystems.getDefault().newWatchService();
         this.broadcaster = broadcaster;
-
-        System.out.println("[FolderWatcher] ROOT_FS = " + ROOT_FS.toAbsolutePath());
+        this.serverLog = serverLog;
     }
 
     @Override
@@ -38,9 +39,10 @@ public class FolderWatcher implements InitializingBean {
                                 StandardWatchEventKinds.ENTRY_DELETE,
                                 StandardWatchEventKinds.ENTRY_MODIFY
                         );
-                        System.out.println("[FolderWatcher] monitorando: " + dir);
+                        serverLog.info("[FolderWatcher]", "Monitorando: " + dir);
+                        
                     } catch (Exception e) {
-                        e.printStackTrace();
+                        serverLog.error("[FolderWatcher]", "Erro ao monitorar: " + dir, e);
                     }
                 });
 
@@ -50,7 +52,6 @@ public class FolderWatcher implements InitializingBean {
     }
 
     private void loop() {
-        System.out.println("[FolderWatcher] iniciado...");
         while (true) {
             try {
                 WatchKey key = watchService.take(); // bloqueia até ter evento
@@ -74,8 +75,6 @@ public class FolderWatcher implements InitializingBean {
                     
                     boolean isDir = Files.isDirectory(fullPath);
 
-                    System.out.println("[FolderWatcher] " + kind.name() + " em " + fullPath);
-
                     if (kind == StandardWatchEventKinds.ENTRY_CREATE) {
                         broadcaster.onCreate(fullPath, isDir);
 
@@ -88,7 +87,7 @@ public class FolderWatcher implements InitializingBean {
                                         StandardWatchEventKinds.ENTRY_DELETE,
                                         StandardWatchEventKinds.ENTRY_MODIFY
                                 );
-                                System.out.println("[FolderWatcher] nova pasta monitorada: " + fullPath);
+                                serverLog.info("[FolderWatcher]", "Nova pasta monitorada: " + fullPath);
                             } catch (Exception e) {
                                 e.printStackTrace();
                             }

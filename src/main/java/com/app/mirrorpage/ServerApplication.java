@@ -8,8 +8,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
 public class ServerApplication {
+
     public static void main(String[] args) {
-        System.out.println("\n### MirrorPage SERVER - Sync Client 1.0.0 ###\n");
+        System.out.println("\n### MirrorPage SERVER - Sync Client 10.0.0 ###\n");
         SpringApplication.run(ServerApplication.class, args);
     }
 }

@@ -45,7 +45,6 @@ public class TreeEventBroadcaster {
         ChangeDto event = new ChangeDto(type, path, null, null, isDir);
 
         // Envia para o tópico que seu AppSocketClient está escutando
-        System.out.println("[WS Tree] Enviando " + type + " -> " + path);
         messagingTemplate.convertAndSend("/topic/tree-changes", event);
     }
 }
