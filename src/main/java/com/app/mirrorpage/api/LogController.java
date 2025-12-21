@@ -23,7 +23,7 @@ public class LogController {
     }
 
     @GetMapping("/history")
-    public List<LogDto> getHistory(@RequestParam(defaultValue = "100") int limit) {
+    public List<LogDto> getHistorsy(@RequestParam(defaultValue = "1000") int limit) {
         return serverLog.getHistory(limit);
     }
 }

@@ -39,7 +39,6 @@ public class FolderWatcher implements InitializingBean {
                                 StandardWatchEventKinds.ENTRY_DELETE,
                                 StandardWatchEventKinds.ENTRY_MODIFY
                         );
-                        serverLog.info("[FolderWatcher]", "Monitorando: " + dir);
                         
                     } catch (Exception e) {
                         serverLog.error("[FolderWatcher]", "Erro ao monitorar: " + dir, e);
